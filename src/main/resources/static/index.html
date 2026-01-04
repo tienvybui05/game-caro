@@ -1,1 +1,44 @@
-//fe
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Caro 3x3 - Realtime Socket</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div class="wrap">
+    <h1>♟️ Caro 3x3 (WebSocket Realtime)</h1>
+
+    <div class="card">
+        <div class="row">
+            <label>Tên:</label>
+            <input id="nameInput" placeholder="VD: Vy" maxlength="18"/>
+            <button id="connectBtn">Connect</button>
+        </div>
+
+        <div class="row">
+            <button id="quickBtn">Chơi ngay (Random)</button>
+            <button id="createBtn">Tạo phòng</button>
+
+            <input id="roomInput" placeholder="Nhập Room ID (6 ký tự)" maxlength="6"/>
+            <button id="joinRoomBtn">Vào phòng</button>
+        </div>
+
+        <div class="row">
+            <button id="restartBtn">Mời chơi lại</button>
+            <button id="leaveBtn">Rời phòng</button>
+        </div>
+
+        <div id="status" class="status">Status: Disconnected</div>
+        <div id="meta" class="meta">-</div>
+    </div>
+
+    <div id="board" class="board"></div>
+
+    <pre id="log" class="log"></pre>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
