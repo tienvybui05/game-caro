@@ -265,7 +265,7 @@ public class GameSocketHandler extends TextWebSocketHandler {
 
     // Join vào phòng có sẵn
     private void joinExistingRoom(WebSocketSession session, String sessionId,
-                                  Player player, String roomId, GameRoom room, boolean isManualRoom) throws IOException {
+            Player player, String roomId, GameRoom room, boolean isManualRoom) throws IOException {
         Player oPlayer = new Player(sessionId, player.getName(), 'O');
         players.put(sessionId, oPlayer);
         room.setPlayerO(oPlayer);
@@ -306,10 +306,12 @@ public class GameSocketHandler extends TextWebSocketHandler {
     private void handleRestartRequest(String sessionId) {
         try {
             String roomId = playerRoomMap.get(sessionId);
-            if (roomId == null) return;
+            if (roomId == null)
+                return;
 
             GameRoom room = activeRooms.get(roomId);
-            if (room == null) return;
+            if (room == null)
+                return;
 
             Player requester = players.get(sessionId);
             Player opponent = (requester.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
@@ -329,10 +331,12 @@ public class GameSocketHandler extends TextWebSocketHandler {
     private void handleRestartAccept(String sessionId) {
         try {
             String roomId = playerRoomMap.get(sessionId);
-            if (roomId == null) return;
+            if (roomId == null)
+                return;
 
             GameRoom room = activeRooms.get(roomId);
-            if (room == null) return;
+            if (room == null)
+                return;
 
             // Reset game
             gameService.reset(room);
@@ -349,18 +353,21 @@ public class GameSocketHandler extends TextWebSocketHandler {
     private void handleRestartDecline(String sessionId) {
         try {
             String roomId = playerRoomMap.get(sessionId);
-            if (roomId == null) return;
+            if (roomId == null)
+                return;
 
             Player decliner = players.get(sessionId);
             GameRoom room = activeRooms.get(roomId);
-            if (room == null) return;
+            if (room == null)
+                return;
 
             Player opponent = (decliner.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
 
             if (opponent != null) {
                 WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
                 if (opponentSession != null && opponentSession.isOpen()) {
-                    opponentSession.sendMessage(new TextMessage("STATUS " + decliner.getName() + " declined restart request"));
+                    // Gửi RESTART_DECLINED để frontend xử lý tìm đối thủ mới
+                    opponentSession.sendMessage(new TextMessage("RESTART_DECLINED from=" + decliner.getName()));
                 }
             }
         } catch (IOException e) {
@@ -427,10 +434,12 @@ public class GameSocketHandler extends TextWebSocketHandler {
     // Tìm room trong tất cả maps
     private GameRoom findRoom(String roomId) {
         GameRoom room = activeRooms.get(roomId);
-        if (room != null) return room;
+        if (room != null)
+            return room;
 
         room = waitingRooms.get(roomId);
-        if (room != null) return room;
+        if (room != null)
+            return room;
 
         return manualRooms.get(roomId);
     }
@@ -449,10 +458,12 @@ public class GameSocketHandler extends TextWebSocketHandler {
     // Gửi board đến phòng
     private void sendBoardToRoom(String roomId) throws IOException {
         GameRoom room = activeRooms.get(roomId);
-        if (room == null) return;
+        if (room == null)
+            return;
 
         StringBuilder sb = new StringBuilder();
-        for (char c : room.getBoard()) sb.append(c);
+        for (char c : room.getBoard())
+            sb.append(c);
         String boardMsg = "BOARD " + sb.toString();
 
         broadcastToRoom(roomId, boardMsg);
@@ -461,7 +472,8 @@ public class GameSocketHandler extends TextWebSocketHandler {
     // Broadcast message đến phòng
     private void broadcastToRoom(String roomId, String msg) throws IOException {
         GameRoom room = activeRooms.get(roomId);
-        if (room == null) return;
+        if (room == null)
+            return;
 
         // Gửi cho player X
         if (room.getPlayerX() != null) {

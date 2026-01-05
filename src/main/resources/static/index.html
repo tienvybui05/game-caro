@@ -1,44 +1,78 @@
 <!doctype html>
 <html lang="vi">
+
 <head>
     <meta charset="UTF-8">
-    <title>Caro 3x3 - Realtime Socket</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caro 3x3 - Online</title>
     <link rel="stylesheet" href="/style.css">
 </head>
+
 <body>
+    <!-- Screen 1: Nhập tên -->
+    <div id="loginScreen" class="screen login-screen">
+        <div class="login-box">
+            <div class="game-logo">🎮</div>
+            <h1>Caro 3x3</h1>
+            <p class="subtitle">Chơi online với bạn bè</p>
 
-<div class="wrap">
-    <h1>♟️ Caro 3x3 (WebSocket Realtime)</h1>
+            <div class="login-form">
+                <input id="nameInput" type="text" placeholder="Nhập tên của bạn..." maxlength="18" autofocus />
+                <button id="startBtn" class="btn-start">Bắt đầu chơi</button>
+            </div>
 
-    <div class="card">
-        <div class="row">
-            <label>Tên:</label>
-            <input id="nameInput" placeholder="VD: Vy" maxlength="18"/>
-            <button id="connectBtn">Connect</button>
+            <div id="loginError" class="login-error hidden"></div>
         </div>
-
-        <div class="row">
-            <button id="quickBtn">Chơi ngay (Random)</button>
-            <button id="createBtn">Tạo phòng</button>
-
-            <input id="roomInput" placeholder="Nhập Room ID (6 ký tự)" maxlength="6"/>
-            <button id="joinRoomBtn">Vào phòng</button>
-        </div>
-
-        <div class="row">
-            <button id="restartBtn">Mời chơi lại</button>
-            <button id="leaveBtn">Rời phòng</button>
-        </div>
-
-        <div id="status" class="status">Status: Disconnected</div>
-        <div id="meta" class="meta">-</div>
     </div>
 
-    <div id="board" class="board"></div>
+    <!-- Screen 2: Game -->
+    <div id="gameScreen" class="screen game-screen hidden">
+        <div class="game-header">
+            <div class="player-info">
+                <span class="player-name" id="playerName"></span>
+                <span class="player-badge" id="playerSymbol"></span>
+            </div>
+            <div id="gameStatus" class="game-status">Đang kết nối...</div>
+        </div>
 
-    <pre id="log" class="log"></pre>
-</div>
+        <div class="game-controls">
+            <button id="quickBtn" class="btn-action btn-quick">⚡ Tìm trận</button>
+            <button id="createBtn" class="btn-action">🏠 Tạo phòng</button>
+            <div class="room-join">
+                <input id="roomInput" placeholder="Room ID" maxlength="6" />
+                <button id="joinRoomBtn" class="btn-action">📥 Vào</button>
+            </div>
+        </div>
 
-<script src="/app.js"></script>
+        <div class="board-area">
+            <div id="board" class="board"></div>
+
+            <!-- Game Over Overlay -->
+            <div id="gameOverlay" class="game-overlay hidden">
+                <div class="overlay-box">
+                    <div id="resultIcon" class="result-icon"></div>
+                    <div id="resultText" class="result-text"></div>
+                    <div id="overlayMessage" class="overlay-message hidden"></div>
+                    <div class="overlay-buttons">
+                        <button id="playAgainBtn" class="btn-play">🔄 Chơi tiếp</button>
+                        <button id="findNewBtn" class="btn-new">🔍 Tìm mới</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="game-info">
+            <div id="matchInfo" class="match-info"></div>
+            <button id="leaveBtn" class="btn-leave hidden">🚪 Rời phòng</button>
+        </div>
+
+        <details class="log-section">
+            <summary>📋 Nhật ký</summary>
+            <pre id="log" class="log"></pre>
+        </details>
+    </div>
+
+    <script src="/app.js"></script>
 </body>
+
 </html>
