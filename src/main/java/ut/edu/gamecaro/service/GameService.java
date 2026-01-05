@@ -7,7 +7,6 @@ import ut.edu.gamecaro.model.GameRoom;
 @Service
 public class GameService {
     public GameResult makeMove(GameRoom room, int index, char symbol) {
-
         // Game đã kết thúc
         if (room.isFinished()) {
             return new GameResult(GameResult.ResultType.NONE, '.');
@@ -87,5 +86,6 @@ public class GameService {
      */
     public void reset(GameRoom room) {
         room.resetBoard();
+        room.setFinished(false);
     }
 }

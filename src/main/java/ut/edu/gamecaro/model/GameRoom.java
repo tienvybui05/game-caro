@@ -3,12 +3,9 @@ package ut.edu.gamecaro.model;
 import java.util.Arrays;
 
 public class GameRoom {
-
     private String roomId;
-
     private Player playerX;
     private Player playerO;
-
     private char[] board; // 9 ô
     private char currentTurn; // 'X' hoặc 'O'
     private boolean finished;
