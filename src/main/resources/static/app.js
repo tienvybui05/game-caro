@@ -80,7 +80,8 @@ document.getElementById("connectBtn").onclick = () => {
         if (msg.startsWith("WELCOME")) {
             setMeta(msg);
         }
-        // THÊM: Xử lý HELLO_OK
+
+        // Xử lý HELLO_OK
         if (msg.startsWith("HELLO_OK")) {
             const name = msg.substring(9);
             addLog("✅ Registered as: " + name);
@@ -90,21 +91,21 @@ document.getElementById("connectBtn").onclick = () => {
             addLog("❌ " + msg);
         }
 
-        if (msg.startsWith("YOU_ARE")) {
-            mySymbol = msg.split(" ")[1];
-            addLog("🎯 Your symbol: " + mySymbol);
+        if (msg.startsWith("WAITING")) {
+            const m = msg.match(/roomId=([A-Z0-9_]+)/);
+            if (m) currentRoomId = m[1];
+            setMeta(`⏳ Đang chờ đối thủ... (Room: ${currentRoomId})`);
+            addLog("⏳ Đã tạo phòng chờ, đợi người chơi thứ 2...");
         }
 
-
-        if (msg.startsWith("ROOM_CREATED")) {
-            const m = msg.match(/roomId=([A-Z0-9]+)/);
-            if (m) currentRoomId = m[1];
-            setMeta(`✅ Created room: ${currentRoomId} (share this ID)`);
-        }
-
-        if (msg.startsWith("MATCHED") || msg.startsWith("JOINED")) {
-            const m = msg.match(/roomId=([A-Z0-9]+)/);
-            if (m) currentRoomId = m[1];
+        if (msg.startsWith("MATCHED")) {
+            const roomMatch = msg.match(/roomId=([A-Z0-9_]+)/);
+            const vsMatch = msg.match(/vs=([^\s]+)/);
+            if (roomMatch) currentRoomId = roomMatch[1];
+            if (vsMatch) {
+                setMeta(`🎮 Đã ghép cặp với: ${vsMatch[1]} (Room: ${currentRoomId})`);
+                addLog(`✅ Đã tìm thấy đối thủ: ${vsMatch[1]}`);
+            }
         }
 
         if (msg.startsWith("BOARD ")) {
@@ -112,18 +113,17 @@ document.getElementById("connectBtn").onclick = () => {
             if (b.length === 9) {
                 boardState = b.split("");
                 renderBoard();
+                addLog("📊 Board updated");
             }
+        }
+
+        if (msg.startsWith("YOU_ARE")) {
+            mySymbol = msg.split(" ")[1];
+            addLog("🎯 Your symbol: " + mySymbol);
         }
 
         if (msg.startsWith("STATUS ")) {
             setMeta(msg);
-        }
-
-        if (msg.startsWith("RESTART_OFFER")) {
-            const from = msg.match(/from=([^\s]+)/)?.[1] || "opponent";
-            const ok = confirm(`${from} muốn chơi lại. Đồng ý?`);
-            if (ok) ws.send("RESTART_ACCEPT");
-            else ws.send("RESTART_DECLINE");
         }
 
         if (msg.startsWith("GAME_OVER")) {
@@ -138,6 +138,24 @@ document.getElementById("connectBtn").onclick = () => {
                     alert("😢 Bạn đã THUA!");
                 }
             }, 100);
+        }
+
+        // THÊM: Xử lý đối thủ rời phòng
+        if (msg.startsWith("OPPONENT_LEFT")) {
+            alert("⚠️ Đối thủ đã rời khỏi phòng!");
+            setMeta("Đối thủ đã rời, bạn có thể chơi lại");
+            currentRoomId = null;
+            mySymbol = null;
+            boardState = Array(9).fill(".");
+            renderBoard();
+        }
+
+        if (msg.startsWith("LEFT_ROOM")) {
+            addLog("✅ Đã rời phòng thành công");
+            currentRoomId = null;
+            mySymbol = null;
+            boardState = Array(9).fill(".");
+            renderBoard();
         }
     };
 
