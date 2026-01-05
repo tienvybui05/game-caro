@@ -80,6 +80,15 @@ document.getElementById("connectBtn").onclick = () => {
         if (msg.startsWith("WELCOME")) {
             setMeta(msg);
         }
+        // THÊM: Xử lý HELLO_OK
+        if (msg.startsWith("HELLO_OK")) {
+            const name = msg.substring(9);
+            addLog("✅ Registered as: " + name);
+        }
+
+        if (msg.startsWith("ERROR")) {
+            addLog("❌ " + msg);
+        }
 
         if (msg.startsWith("YOU_ARE")) {
             mySymbol = msg.split(" ")[1];

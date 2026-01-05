@@ -9,6 +9,7 @@ import ut.edu.gamecaro.service.GameService;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class GameSocketHandler extends TextWebSocketHandler {
@@ -18,7 +19,14 @@ public class GameSocketHandler extends TextWebSocketHandler {
     public GameSocketHandler(GameService gameService) {
         this.gameService = gameService;
     }
+// THÊM: Map để lưu các phòng chờ
+    private final Map<String, GameRoom> waitingRooms = new ConcurrentHashMap<>();
 
+    // THÊM: Map để lưu phòng đang chơi
+    private final Map<String, GameRoom> activeRooms = new ConcurrentHashMap<>();
+
+    // THÊM: Map sessionId -> roomId
+    private final Map<String, String> playerRoomMap = new HashMap<>();
     // Chỉ 1 game duy nhất (caro cơ bản)
     private final GameRoom gameRoom = new GameRoom("ROOM_1");
 
@@ -42,24 +50,15 @@ public class GameSocketHandler extends TextWebSocketHandler {
 
         // ===== HELLO <name> =====
         if (payload.startsWith("HELLO")) {
-
-            if (players.size() >= 2) {
-                session.sendMessage(new TextMessage("STATUS Room full"));
+            String name = payload.substring(5).trim();
+            if (name.isEmpty()) {
+                session.sendMessage(new TextMessage("ERROR Name cannot be empty"));
                 return;
             }
 
-            String name = payload.substring(5).trim();
-            char symbol = players.isEmpty() ? 'X' : 'O';
-
-            Player player = new Player(sessionId, name, symbol);
+            Player player = new Player(sessionId, name, '?'); // Symbol sẽ set sau
             players.put(sessionId, player);
-
-            if (symbol == 'X') gameRoom.setPlayerX(player);
-            else gameRoom.setPlayerO(player);
-
-            session.sendMessage(new TextMessage("YOU_ARE " + symbol));
-            broadcast("STATUS Player " + name + " joined as " + symbol);
-            sendBoard();
+            session.sendMessage(new TextMessage("HELLO_OK Hello " + name));
             return;
         }
 
@@ -112,5 +111,20 @@ public class GameSocketHandler extends TextWebSocketHandler {
                 s.sendMessage(new TextMessage(msg));
             }
         }
+    }
+    // THÊM: Phương thức tạo phòng chờ
+    private String createWaitingRoom(Player player, String sessionId) throws IOException {
+        String roomId = "QUICK_" + System.currentTimeMillis() % 10000;
+        GameRoom room = new GameRoom(roomId);
+
+        // Set player là X (người chơi đầu tiên)
+        Player xPlayer = new Player(sessionId, player.getName(), 'X');
+        players.put(sessionId, xPlayer);
+        room.setPlayerX(xPlayer);
+
+        waitingRooms.put(roomId, room);
+        playerRoomMap.put(sessionId, roomId);
+
+        return roomId;
     }
 }
