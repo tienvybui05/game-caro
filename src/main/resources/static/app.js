@@ -31,6 +31,16 @@ let iWantPlayAgain = false;
 let opponentWantsPlayAgain = false;
 let gameEnded = false;
 
+// ===== TIMER STATE =====
+let turnTimerInterval = null;
+let turnStartTime = 0;
+let currentTurn = null; // 'X' or 'O'
+const TURN_DURATION = 60; // 1 phút = 60 giây
+
+// ===== Timer Elements =====
+let myTimerEl = null;
+let opponentTimerEl = null;
+
 // ===== Utility Functions =====
 function addLog(msg) {
     log.textContent += msg + "\n";
@@ -63,6 +73,79 @@ function updateSymbolBadge() {
     if (mySymbol === "O") playerSymbolEl.classList.add("o");
 }
 
+// ===== Timer Functions =====
+let singleTimerEl = null;
+
+function createTimerElements() {
+    const timerContainer = document.createElement("div");
+    timerContainer.className = "timer-container";
+
+    singleTimerEl = document.createElement("div");
+    singleTimerEl.className = "timer inactive";
+    singleTimerEl.textContent = TURN_DURATION;
+
+    timerContainer.appendChild(singleTimerEl);
+
+    const boardArea = document.querySelector(".board-area");
+    boardArea.insertBefore(timerContainer, boardArea.firstChild);
+}
+
+
+function updateTimerDisplay() {
+    if (!turnStartTime || !currentTurn) return;
+
+    const now = Date.now();
+    const elapsed = Math.floor((now - turnStartTime) / 1000);
+    const remaining = Math.max(0, TURN_DURATION - elapsed);
+
+    singleTimerEl.textContent = remaining;
+
+    // Xác định active / inactive
+    if (currentTurn === mySymbol) {
+        singleTimerEl.classList.add("active");
+        singleTimerEl.classList.remove("inactive");
+    } else {
+        singleTimerEl.classList.add("inactive");
+        singleTimerEl.classList.remove("active");
+    }
+
+    // Urgent khi <=10s
+    singleTimerEl.classList.toggle("urgent", remaining <= 10);
+
+    if (remaining <= 0) stopTurnTimer();
+}
+
+
+function startTurnTimer(turn, startTimestamp) {
+    stopTurnTimer(); // Dừng timer cũ nếu có
+
+    currentTurn = turn;
+    turnStartTime = startTimestamp || Date.now();
+
+    // Cập nhật ngay lần đầu
+    updateTimerDisplay();
+
+    // Cập nhật mỗi giây
+    turnTimerInterval = setInterval(updateTimerDisplay, 1000);
+}
+
+function stopTurnTimer() {
+    if (turnTimerInterval) {
+        clearInterval(turnTimerInterval);
+        turnTimerInterval = null;
+    }
+}
+
+function resetTimers() {
+    stopTurnTimer();
+    if (singleTimerEl) {
+        singleTimerEl.textContent = TURN_DURATION;
+        singleTimerEl.className = "timer inactive";
+    }
+    currentTurn = null;
+    turnStartTime = 0;
+}
+
 // ===== Create Board =====
 board.innerHTML = "";
 for (let i = 0; i < 9; i++) {
@@ -88,6 +171,7 @@ function showOverlay(icon, text) {
     iWantPlayAgain = false;
     opponentWantsPlayAgain = false;
     gameEnded = true;
+    stopTurnTimer();
 }
 
 function hideOverlay() {
@@ -106,6 +190,7 @@ function resetForNewGame() {
     boardState = Array(9).fill(".");
     renderBoard();
     hideOverlay();
+    resetTimers();
 }
 
 // ===== Overlay Button Handlers =====
@@ -135,6 +220,7 @@ findNewBtn.onclick = () => {
     currentRoomId = null;
     leaveBtn.classList.add("hidden");
     setMatchInfo("");
+    resetTimers();
     addLog("🔄 Tìm đối thủ mới...");
 
     setTimeout(() => {
@@ -179,6 +265,9 @@ function connectWebSocket() {
         playerNameEl.textContent = playerName;
         setStatus("Sẵn sàng");
         addLog("✅ Kết nối thành công!");
+
+        // Tạo timer elements
+        createTimerElements();
     };
 
     ws.onerror = () => {
@@ -189,6 +278,7 @@ function connectWebSocket() {
     ws.onclose = () => {
         setStatus("Mất kết nối");
         addLog("🔌 Ngắt kết nối");
+        resetTimers();
     };
 
     ws.onmessage = (event) => {
@@ -212,6 +302,7 @@ function connectWebSocket() {
             setStatus("Đang chờ...");
             setMatchInfo("Room: " + currentRoomId);
             leaveBtn.classList.remove("hidden");
+            resetTimers();
         }
 
         // MATCHED / JOINED
@@ -234,6 +325,7 @@ function connectWebSocket() {
             setStatus("Chờ người chơi");
             setMatchInfo("Room: " + currentRoomId);
             leaveBtn.classList.remove("hidden");
+            resetTimers();
         }
 
         // BOARD
@@ -249,6 +341,24 @@ function connectWebSocket() {
         if (msg.startsWith("YOU_ARE")) {
             mySymbol = msg.split(" ")[1];
             updateSymbolBadge();
+        }
+
+        // TURN_START - Bắt đầu lượt mới (THÊM MỚI)
+        if (msg.startsWith("TURN_START")) {
+            const turnMatch = msg.match(/turn=([XO])/);
+            const startMatch = msg.match(/start=(\d+)/);
+
+            if (turnMatch && startMatch) {
+                const turn = turnMatch[1];
+                const startTime = parseInt(startMatch[1]);
+                startTurnTimer(turn, startTime);
+
+                if (turn === mySymbol) {
+                    setStatus("Lượt của bạn!");
+                } else {
+                    setStatus("Lượt đối thủ...");
+                }
+            }
         }
 
         // STATUS
@@ -276,8 +386,11 @@ function connectWebSocket() {
 
         // GAME_OVER
         if (msg.startsWith("GAME_OVER")) {
-            const winner = msg.split("winner=")[1];
+            const winnerMatch = msg.match(/winner=([^ ]+)/);
+            const reasonMatch = msg.match(/reason=([^ ]+)/);
+
             let icon, text;
+            let winner = winnerMatch ? winnerMatch[1] : "";
 
             if (winner === "DRAW") {
                 icon = "🤝";
@@ -285,12 +398,16 @@ function connectWebSocket() {
             } else if (winner === mySymbol) {
                 icon = "🏆";
                 text = "Bạn thắng!";
+            } else if (reasonMatch && reasonMatch[1] === "TIMEOUT") {
+                icon = "⏰";
+                text = winner === "X" ? "X hết giờ, O thắng!" : "O hết giờ, X thắng!";
             } else {
                 icon = "😔";
                 text = "Bạn thua!";
             }
 
             setTimeout(() => showOverlay(icon, text), 400);
+            stopTurnTimer();
         }
 
         // RESTART_DECLINED
@@ -309,6 +426,7 @@ function connectWebSocket() {
             boardState = Array(9).fill(".");
             renderBoard();
             leaveBtn.classList.add("hidden");
+            resetTimers();
         }
 
         // LEFT_ROOM
@@ -321,6 +439,7 @@ function connectWebSocket() {
             setStatus("Sẵn sàng");
             setMatchInfo("");
             leaveBtn.classList.add("hidden");
+            resetTimers();
         }
     };
 }
@@ -331,11 +450,13 @@ document.getElementById("quickBtn").onclick = () => {
     hideOverlay();
     ws.send("QUICKPLAY");
     setStatus("Đang tìm...");
+    resetTimers();
 };
 
 document.getElementById("createBtn").onclick = () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send("CREATE_ROOM");
+    resetTimers();
 };
 
 document.getElementById("joinRoomBtn").onclick = () => {
@@ -346,10 +467,12 @@ document.getElementById("joinRoomBtn").onclick = () => {
         return;
     }
     ws.send("JOIN_ROOM " + roomId);
+    resetTimers();
 };
 
 leaveBtn.onclick = () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     hideOverlay();
     ws.send("LEAVE");
+    resetTimers();
 };

@@ -9,7 +9,7 @@ import ut.edu.gamecaro.service.GameService;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 
 @Component
 public class GameSocketHandler extends TextWebSocketHandler {
@@ -30,6 +30,11 @@ public class GameSocketHandler extends TextWebSocketHandler {
 
     private final Map<String, WebSocketSession> sessions = new HashMap<>();
     private final Map<String, Player> players = new HashMap<>();
+
+    // ===== TIMER IMPLEMENTATION =====
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(10);
+    private final Map<String, ScheduledFuture<?>> turnTimers = new ConcurrentHashMap<>();
+    private static final long TURN_DURATION_SECONDS = 60; // 1 phút
 
     public GameSocketHandler(GameService gameService) {
         this.gameService = gameService;
@@ -155,6 +160,9 @@ public class GameSocketHandler extends TextWebSocketHandler {
             return;
         }
 
+        // Hủy timer cũ trước khi đánh
+        cancelTurnTimer(roomId);
+
         GameResult result = gameService.makeMove(room, index, player.getSymbol());
         sendBoardToRoom(roomId);
 
@@ -162,6 +170,63 @@ public class GameSocketHandler extends TextWebSocketHandler {
             broadcastToRoom(roomId, "GAME_OVER winner=" + result.getWinner());
         } else if (result.getType() == GameResult.ResultType.DRAW) {
             broadcastToRoom(roomId, "GAME_OVER winner=DRAW");
+        } else if (!room.isFinished()) {
+            // Game chưa kết thúc, bắt đầu timer cho lượt tiếp theo
+            startTurnTimer(roomId, room.getCurrentTurn());
+            // Gửi thông tin lượt mới
+            broadcastToRoom(roomId, "TURN_START turn=" + room.getCurrentTurn() + " start=" + System.currentTimeMillis());
+        }
+    }
+
+    // Bắt đầu timer cho lượt
+    private void startTurnTimer(String roomId, char currentTurn) {
+        // Hủy timer cũ nếu có
+        cancelTurnTimer(roomId);
+
+        // Tạo timer mới
+        ScheduledFuture<?> future = scheduler.schedule(() -> {
+            handleTimeout(roomId, currentTurn);
+        }, TURN_DURATION_SECONDS, TimeUnit.SECONDS);
+
+        turnTimers.put(roomId, future);
+    }
+
+    // Xử lý hết giờ
+    private void handleTimeout(String roomId, char timedOutPlayer) {
+        GameRoom room = activeRooms.get(roomId);
+        if (room == null || room.isFinished()) return;
+
+        room.setFinished(true);
+
+        char winner;
+        if (timedOutPlayer == 'X') {
+            winner = 'O';
+        } else if (timedOutPlayer == 'O') {
+            winner = 'X';
+        } else {
+            try {
+                broadcastToRoom(roomId, "ERROR Invalid player");
+            } catch (IOException e) {
+                System.err.println("Failed to broadcast error: " + e.getMessage());
+            }
+            return;
+        }
+
+        try {
+            broadcastToRoom(roomId, "GAME_OVER winner=" + winner + " reason=TIMEOUT");
+        } catch (IOException e) {
+            System.err.println("Failed to broadcast game over: " + e.getMessage());
+        }
+
+        turnTimers.remove(roomId);
+    }
+
+    // Hủy timer
+    private void cancelTurnTimer(String roomId) {
+        ScheduledFuture<?> future = turnTimers.get(roomId);
+        if (future != null) {
+            future.cancel(false);
+            turnTimers.remove(roomId);
         }
     }
 
@@ -265,7 +330,7 @@ public class GameSocketHandler extends TextWebSocketHandler {
 
     // Join vào phòng có sẵn
     private void joinExistingRoom(WebSocketSession session, String sessionId,
-            Player player, String roomId, GameRoom room, boolean isManualRoom) throws IOException {
+                                  Player player, String roomId, GameRoom room, boolean isManualRoom) throws IOException {
         Player oPlayer = new Player(sessionId, player.getName(), 'O');
         players.put(sessionId, oPlayer);
         room.setPlayerO(oPlayer);
@@ -277,9 +342,13 @@ public class GameSocketHandler extends TextWebSocketHandler {
 
         playerRoomMap.put(sessionId, roomId);
 
+        // Bắt đầu timer cho lượt đầu tiên (X đi trước)
+        startTurnTimer(roomId, 'X');
+
         // Thông báo cho player O
         session.sendMessage(new TextMessage("YOU_ARE O"));
         session.sendMessage(new TextMessage("MATCHED roomId=" + roomId + " vs=" + room.getPlayerX().getName()));
+        session.sendMessage(new TextMessage("TURN_START turn=X start=" + System.currentTimeMillis()));
 
         // Thông báo cho player X
         WebSocketSession xSession = sessions.get(room.getPlayerX().getSessionId());
@@ -291,6 +360,7 @@ public class GameSocketHandler extends TextWebSocketHandler {
                     xSession.sendMessage(new TextMessage("MATCHED roomId=" + roomId + " vs=" + player.getName()));
                 }
                 xSession.sendMessage(new TextMessage("STATUS Game started! Your turn (X)"));
+                xSession.sendMessage(new TextMessage("TURN_START turn=X start=" + System.currentTimeMillis()));
             } catch (IOException e) {
                 logError("Error notifying player X", e, room.getPlayerX().getSessionId());
             }
@@ -338,11 +408,18 @@ public class GameSocketHandler extends TextWebSocketHandler {
             if (room == null)
                 return;
 
+            // Hủy timer cũ
+            cancelTurnTimer(roomId);
+
             // Reset game
             gameService.reset(room);
 
+            // Bắt đầu timer mới cho lượt X
+            startTurnTimer(roomId, 'X');
+
             // Thông báo cho cả 2
             broadcastToRoom(roomId, "STATUS Game restarted! " + room.getPlayerX().getName() + "'s turn (X)");
+            broadcastToRoom(roomId, "TURN_START turn=X start=" + System.currentTimeMillis());
             sendBoardToRoom(roomId);
         } catch (IOException e) {
             logError("Error restarting game", e, sessionId);
@@ -380,6 +457,9 @@ public class GameSocketHandler extends TextWebSocketHandler {
         try {
             String roomId = playerRoomMap.get(sessionId);
             if (roomId != null) {
+                // Hủy timer
+                cancelTurnTimer(roomId);
+
                 // Thông báo cho đối thủ nếu có
                 GameRoom room = findRoom(roomId);
                 if (room != null) {

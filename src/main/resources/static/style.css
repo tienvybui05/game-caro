@@ -39,9 +39,9 @@ body {
 /* ===== LOGIN SCREEN ===== */
 .login-screen {
     background:
-        radial-gradient(circle at 20% 20%, rgba(124, 58, 237, 0.3) 0%, transparent 40%),
-        radial-gradient(circle at 80% 80%, rgba(0, 212, 255, 0.2) 0%, transparent 40%),
-        var(--bg);
+            radial-gradient(circle at 20% 20%, rgba(124, 58, 237, 0.3) 0%, transparent 40%),
+            radial-gradient(circle at 80% 80%, rgba(0, 212, 255, 0.2) 0%, transparent 40%),
+            var(--bg);
 }
 
 .login-box {
@@ -56,12 +56,9 @@ body {
 }
 
 @keyframes bounce {
-
-    0%,
-    100% {
+    0%, 100% {
         transform: translateY(0);
     }
-
     50% {
         transform: translateY(-10px);
     }
@@ -141,8 +138,8 @@ body {
     padding: 20px;
     gap: 16px;
     background:
-        radial-gradient(circle at 50% 0%, rgba(124, 58, 237, 0.15) 0%, transparent 50%),
-        var(--bg);
+            radial-gradient(circle at 50% 0%, rgba(124, 58, 237, 0.15) 0%, transparent 50%),
+            var(--bg);
 }
 
 .game-header {
@@ -188,12 +185,15 @@ body {
     font-size: 13px;
 }
 
-.game-controls {
+/* ===== GAME CONTROLS - HORIZONTAL (SỬA MỚI) ===== */
+.game-controls-horizontal {
     display: flex;
     gap: 8px;
-    flex-wrap: wrap;
     justify-content: center;
+    align-items: center;
+    width: 100%;
     max-width: 360px;
+    flex-wrap: nowrap;
 }
 
 .btn-action {
@@ -206,6 +206,7 @@ body {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
+    white-space: nowrap;
 }
 
 .btn-action:hover {
@@ -222,21 +223,67 @@ body {
     box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
 }
 
-.room-join {
+.room-join-horizontal {
     display: flex;
     gap: 6px;
+    align-items: center;
 }
 
-.room-join input {
+.room-join-horizontal input {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: var(--text);
     padding: 10px;
     border-radius: 10px;
-    width: 90px;
+    width: 100px;
     font-size: 14px;
     text-align: center;
     outline: none;
+}
+
+/* ===== SINGLE CHESS CLOCK ===== */
+.timer-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+
+.timer {
+    font-size: 36px;
+    font-weight: 900;
+    font-family: 'Courier New', monospace;
+    padding: 10px 28px;
+    border-radius: 14px;
+    min-width: 120px;
+    text-align: center;
+    letter-spacing: 1px;
+    transition: all 0.25s ease;
+}
+
+/* LƯỢT MÌNH – SÁNG */
+.timer.active {
+    background: #1f2933;
+    color: #ffffff;
+    box-shadow: 0 0 18px rgba(255,255,255,0.15);
+    opacity: 1;
+}
+
+/* LƯỢT ĐỐI THỦ – MỜ */
+.timer.inactive {
+    background: rgba(255,255,255,0.05);
+    color: var(--muted);
+    opacity: 0.45;
+}
+
+/* SẮP HẾT GIỜ */
+.timer.urgent {
+    color: var(--danger);
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
 }
 
 /* ===== BOARD ===== */
@@ -311,7 +358,6 @@ body {
         opacity: 0;
         transform: scale(0.8);
     }
-
     to {
         opacity: 1;
         transform: scale(1);
@@ -349,18 +395,6 @@ body {
 .overlay-message.opponent {
     background: rgba(255, 165, 2, 0.15);
     color: var(--warning);
-}
-
-@keyframes pulse {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.6;
-    }
 }
 
 .overlay-buttons {
@@ -464,4 +498,30 @@ body {
     color: var(--muted);
     font-family: 'Consolas', monospace;
     margin-top: 8px;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 400px) {
+    .game-controls-horizontal {
+        flex-wrap: wrap;
+    }
+
+    .room-join-horizontal input {
+        width: 80px;
+    }
+
+    .timer {
+        font-size: 28px;
+        min-width: 70px;
+        padding: 6px 12px;
+    }
+
+    .board {
+        grid-template-columns: repeat(3, 90px);
+    }
+
+    .cell {
+        width: 90px;
+        height: 90px;
+    }
 }

@@ -9,70 +9,77 @@
 </head>
 
 <body>
-    <!-- Screen 1: Nhập tên -->
-    <div id="loginScreen" class="screen login-screen">
-        <div class="login-box">
-            <div class="game-logo">🎮</div>
-            <h1>Caro 3x3</h1>
-            <p class="subtitle">Chơi online với bạn bè</p>
+<!-- Screen 1: Nhập tên -->
+<div id="loginScreen" class="screen login-screen">
+    <div class="login-box">
+        <div class="game-logo">🎮</div>
+        <h1>Caro 3x3</h1>
+        <p class="subtitle">Chơi online với bạn bè</p>
 
-            <div class="login-form">
-                <input id="nameInput" type="text" placeholder="Nhập tên của bạn..." maxlength="18" autofocus />
-                <button id="startBtn" class="btn-start">Bắt đầu chơi</button>
-            </div>
+        <div class="login-form">
+            <input id="nameInput" type="text" placeholder="Nhập tên của bạn..." maxlength="18" autofocus />
+            <button id="startBtn" class="btn-start">Bắt đầu chơi</button>
+        </div>
 
-            <div id="loginError" class="login-error hidden"></div>
+        <div id="loginError" class="login-error hidden"></div>
+    </div>
+</div>
+
+<!-- Screen 2: Game -->
+<div id="gameScreen" class="screen game-screen hidden">
+    <div class="game-header">
+        <div class="player-info">
+            <span class="player-name" id="playerName"></span>
+            <span class="player-badge" id="playerSymbol"></span>
+        </div>
+        <div id="gameStatus" class="game-status">Đang kết nối...</div>
+    </div>
+
+    <!-- CÁC NÚT NẰM NGANG 1 HÀNG (SỬA MỚI) -->
+    <div class="game-controls-horizontal">
+        <button id="quickBtn" class="btn-action btn-quick">⚡ Tìm trận</button>
+        <button id="createBtn" class="btn-action">🏠 Tạo phòng</button>
+        <div class="room-join-horizontal">
+            <input id="roomInput" placeholder="Room ID" maxlength="6" />
+            <button id="joinRoomBtn" class="btn-action">📥 Vào</button>
         </div>
     </div>
 
-    <!-- Screen 2: Game -->
-    <div id="gameScreen" class="screen game-screen hidden">
-        <div class="game-header">
-            <div class="player-info">
-                <span class="player-name" id="playerName"></span>
-                <span class="player-badge" id="playerSymbol"></span>
-            </div>
-            <div id="gameStatus" class="game-status">Đang kết nối...</div>
-        </div>
+    <div class="board-area">
+        <!-- TIMER CONTAINER (THÊM MỚI - sẽ được tạo bằng JavaScript) -->
+        <!-- <div class="timer-container">
+            <div id="myTimer" class="timer my-timer">60</div>
+            <div id="opponentTimer" class="timer opponent-timer">60</div>
+        </div> -->
 
-        <div class="game-controls">
-            <button id="quickBtn" class="btn-action btn-quick">⚡ Tìm trận</button>
-            <button id="createBtn" class="btn-action">🏠 Tạo phòng</button>
-            <div class="room-join">
-                <input id="roomInput" placeholder="Room ID" maxlength="6" />
-                <button id="joinRoomBtn" class="btn-action">📥 Vào</button>
-            </div>
-        </div>
+        <div id="board" class="board"></div>
 
-        <div class="board-area">
-            <div id="board" class="board"></div>
-
-            <!-- Game Over Overlay -->
-            <div id="gameOverlay" class="game-overlay hidden">
-                <div class="overlay-box">
-                    <div id="resultIcon" class="result-icon"></div>
-                    <div id="resultText" class="result-text"></div>
-                    <div id="overlayMessage" class="overlay-message hidden"></div>
-                    <div class="overlay-buttons">
-                        <button id="playAgainBtn" class="btn-play">🔄 Chơi tiếp</button>
-                        <button id="findNewBtn" class="btn-new">🔍 Tìm mới</button>
-                    </div>
+        <!-- Game Over Overlay -->
+        <div id="gameOverlay" class="game-overlay hidden">
+            <div class="overlay-box">
+                <div id="resultIcon" class="result-icon"></div>
+                <div id="resultText" class="result-text"></div>
+                <div id="overlayMessage" class="overlay-message hidden"></div>
+                <div class="overlay-buttons">
+                    <button id="playAgainBtn" class="btn-play">🔄 Chơi tiếp</button>
+                    <button id="findNewBtn" class="btn-new">🔍 Tìm mới</button>
                 </div>
             </div>
         </div>
-
-        <div class="game-info">
-            <div id="matchInfo" class="match-info"></div>
-            <button id="leaveBtn" class="btn-leave hidden">🚪 Rời phòng</button>
-        </div>
-
-        <details class="log-section">
-            <summary>📋 Nhật ký</summary>
-            <pre id="log" class="log"></pre>
-        </details>
     </div>
 
-    <script src="/app.js"></script>
+    <div class="game-info">
+        <div id="matchInfo" class="match-info"></div>
+        <button id="leaveBtn" class="btn-leave hidden">🚪 Rời phòng</button>
+    </div>
+
+    <details class="log-section">
+        <summary>📋 Nhật ký</summary>
+        <pre id="log" class="log"></pre>
+    </details>
+</div>
+
+<script src="/app.js"></script>
 </body>
 
 </html>
