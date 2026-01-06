@@ -77,6 +77,17 @@ function updateSymbolBadge() {
 let singleTimerEl = null;
 
 function createTimerElements() {
+    // ✅ Tránh tạo timer nhiều lần (khi reconnect / gọi lại connectWebSocket)
+    const boardArea = document.querySelector(".board-area");
+    if (!boardArea) return;
+
+    const existing = boardArea.querySelector(".timer-container");
+    if (existing) {
+        // Nếu đã có timer container thì chỉ lấy lại reference
+        singleTimerEl = existing.querySelector(".timer");
+        return;
+    }
+
     const timerContainer = document.createElement("div");
     timerContainer.className = "timer-container";
 
@@ -86,13 +97,12 @@ function createTimerElements() {
 
     timerContainer.appendChild(singleTimerEl);
 
-    const boardArea = document.querySelector(".board-area");
     boardArea.insertBefore(timerContainer, boardArea.firstChild);
 }
 
-
 function updateTimerDisplay() {
     if (!turnStartTime || !currentTurn) return;
+    if (!singleTimerEl) return;
 
     const now = Date.now();
     const elapsed = Math.floor((now - turnStartTime) / 1000);
@@ -114,7 +124,6 @@ function updateTimerDisplay() {
 
     if (remaining <= 0) stopTurnTimer();
 }
-
 
 function startTurnTimer(turn, startTimestamp) {
     stopTurnTimer(); // Dừng timer cũ nếu có
@@ -279,6 +288,9 @@ function connectWebSocket() {
         setStatus("Mất kết nối");
         addLog("🔌 Ngắt kết nối");
         resetTimers();
+
+        // Không tự động LEAVE ở đây vì đã disconnect
+        // Overlay vẫn giữ nguyên (nếu đang hiện), để user thấy trạng thái rõ ràng
     };
 
     ws.onmessage = (event) => {
@@ -364,9 +376,14 @@ function connectWebSocket() {
         // STATUS
         if (msg.startsWith("STATUS ")) {
             const statusMsg = msg.substring(7);
+
+            // Nếu game restarted/started thì reset UI
             if (statusMsg.includes("restarted") || statusMsg.includes("started")) {
                 resetForNewGame();
                 setStatus("Đang chơi");
+            } else {
+                // Giữ lại những STATUS khác để hiển thị rõ (vd: Opponent disconnected / Opponent is not connected)
+                setStatus(statusMsg);
             }
         }
 
@@ -391,14 +408,24 @@ function connectWebSocket() {
 
             let icon, text;
             let winner = winnerMatch ? winnerMatch[1] : "";
+            let reason = reasonMatch ? reasonMatch[1] : "";
 
             if (winner === "DRAW") {
                 icon = "🤝";
                 text = "Hòa!";
+            } else if (reason === "DISCONNECT") {
+                // ✅ THÊM MỚI: xử lý đối thủ mất kết nối
+                if (winner === mySymbol) {
+                    icon = "🔌";
+                    text = "Đối thủ mất kết nối. Bạn thắng!";
+                } else {
+                    icon = "🔌";
+                    text = "Mất kết nối.";
+                }
             } else if (winner === mySymbol) {
                 icon = "🏆";
                 text = "Bạn thắng!";
-            } else if (reasonMatch && reasonMatch[1] === "TIMEOUT") {
+            } else if (reason === "TIMEOUT") {
                 icon = "⏰";
                 text = winner === "X" ? "X hết giờ, O thắng!" : "O hết giờ, X thắng!";
             } else {

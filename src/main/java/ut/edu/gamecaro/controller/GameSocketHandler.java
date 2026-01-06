@@ -26,10 +26,10 @@ public class GameSocketHandler extends TextWebSocketHandler {
     private final Map<String, GameRoom> manualRooms = new ConcurrentHashMap<>();
 
     // Map sessionId -> roomId
-    private final Map<String, String> playerRoomMap = new HashMap<>();
+    private final Map<String, String> playerRoomMap = new ConcurrentHashMap<>();
 
-    private final Map<String, WebSocketSession> sessions = new HashMap<>();
-    private final Map<String, Player> players = new HashMap<>();
+    private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
+    private final Map<String, Player> players = new ConcurrentHashMap<>();
 
     // ===== TIMER IMPLEMENTATION =====
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(10);
@@ -384,12 +384,21 @@ public class GameSocketHandler extends TextWebSocketHandler {
                 return;
 
             Player requester = players.get(sessionId);
+            if (requester == null)
+                return;
+
             Player opponent = (requester.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
 
             if (opponent != null) {
                 WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
                 if (opponentSession != null && opponentSession.isOpen()) {
                     opponentSession.sendMessage(new TextMessage("RESTART_OFFER from=" + requester.getName()));
+                } else {
+                    // Đối thủ không online -> báo lại cho requester để UI không bị "chờ vô hạn"
+                    WebSocketSession requesterSession = sessions.get(sessionId);
+                    if (requesterSession != null && requesterSession.isOpen()) {
+                        requesterSession.sendMessage(new TextMessage("STATUS Opponent is not connected"));
+                    }
                 }
             }
         } catch (IOException e) {
@@ -407,6 +416,25 @@ public class GameSocketHandler extends TextWebSocketHandler {
             GameRoom room = activeRooms.get(roomId);
             if (room == null)
                 return;
+
+            // Nếu thiếu 1 người (disconnect) thì không restart được
+            if (room.getPlayerX() == null || room.getPlayerO() == null) {
+                WebSocketSession s = sessions.get(sessionId);
+                if (s != null && s.isOpen()) {
+                    s.sendMessage(new TextMessage("STATUS Cannot restart: opponent not connected"));
+                }
+                return;
+            }
+
+            WebSocketSession xSession = sessions.get(room.getPlayerX().getSessionId());
+            WebSocketSession oSession = sessions.get(room.getPlayerO().getSessionId());
+            if (xSession == null || !xSession.isOpen() || oSession == null || !oSession.isOpen()) {
+                WebSocketSession s = sessions.get(sessionId);
+                if (s != null && s.isOpen()) {
+                    s.sendMessage(new TextMessage("STATUS Cannot restart: opponent not connected"));
+                }
+                return;
+            }
 
             // Hủy timer cũ
             cancelTurnTimer(roomId);
@@ -438,13 +466,16 @@ public class GameSocketHandler extends TextWebSocketHandler {
             if (room == null)
                 return;
 
-            Player opponent = (decliner.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
+            Player opponent = null;
+            if (decliner != null) {
+                opponent = (decliner.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
+            }
 
             if (opponent != null) {
                 WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
                 if (opponentSession != null && opponentSession.isOpen()) {
                     // Gửi RESTART_DECLINED để frontend xử lý tìm đối thủ mới
-                    opponentSession.sendMessage(new TextMessage("RESTART_DECLINED from=" + decliner.getName()));
+                    opponentSession.sendMessage(new TextMessage("RESTART_DECLINED from=" + (decliner != null ? decliner.getName() : "Unknown")));
                 }
             }
         } catch (IOException e) {
@@ -468,6 +499,13 @@ public class GameSocketHandler extends TextWebSocketHandler {
 
                     if (leaver != null) {
                         opponent = (leaver.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
+                    } else {
+                        // fallback nếu không tìm thấy player trong map
+                        if (room.getPlayerX() != null && sessionId.equals(room.getPlayerX().getSessionId())) {
+                            opponent = room.getPlayerO();
+                        } else if (room.getPlayerO() != null && sessionId.equals(room.getPlayerO().getSessionId())) {
+                            opponent = room.getPlayerX();
+                        }
                     }
 
                     if (opponent != null) {
@@ -482,7 +520,7 @@ public class GameSocketHandler extends TextWebSocketHandler {
                         }
                     }
 
-                    // Xóa room khỏi tất cả maps
+                    // Xóa room khỏi tất cả maps (LEAVE là rời chủ động -> xoá luôn)
                     waitingRooms.remove(roomId);
                     manualRooms.remove(roomId);
                     activeRooms.remove(roomId);
@@ -501,10 +539,84 @@ public class GameSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    // ===== XỬ LÝ DISCONNECT (THÊM MỚI) =====
+    // Khác với LEAVE:
+    // - Disconnect là mất kết nối đột ngột -> không nên xóa room ngay nếu đang active
+    // - Giữ room để không phá flow "chơi lại với đối thủ vừa chơi" (khi cả 2 vẫn online)
+    // - Nhưng vẫn phải thông báo cho người còn lại và kết thúc ván cho đúng
+    private void handleDisconnect(String sessionId) {
+        String roomId = playerRoomMap.get(sessionId);
+
+        // Clean maps cơ bản
+        playerRoomMap.remove(sessionId);
+
+        if (roomId == null) return;
+
+        // Nếu người này đang ở waiting/manual (chưa ghép) -> xóa phòng chờ
+        GameRoom waiting = waitingRooms.get(roomId);
+        if (waiting != null) {
+            waitingRooms.remove(roomId);
+            return;
+        }
+        GameRoom manual = manualRooms.get(roomId);
+        if (manual != null) {
+            manualRooms.remove(roomId);
+            return;
+        }
+
+        // Nếu đang chơi -> xử lý kết thúc ván + báo đối thủ
+        GameRoom room = activeRooms.get(roomId);
+        if (room == null) return;
+
+        // Hủy timer đang chạy
+        cancelTurnTimer(roomId);
+
+        // Xác định leaver/opponent dựa theo sessionId
+        Player leaver = players.get(sessionId);
+        Player opponent = null;
+
+        if (leaver != null) {
+            opponent = (leaver.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
+        } else {
+            // fallback nếu player map đã bị mất trước khi vào đây
+            if (room.getPlayerX() != null && sessionId.equals(room.getPlayerX().getSessionId())) {
+                opponent = room.getPlayerO();
+            } else if (room.getPlayerO() != null && sessionId.equals(room.getPlayerO().getSessionId())) {
+                opponent = room.getPlayerX();
+            }
+        }
+
+        // Nếu không có đối thủ thì xóa room luôn
+        if (opponent == null) {
+            activeRooms.remove(roomId);
+            return;
+        }
+
+        WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
+        if (opponentSession != null && opponentSession.isOpen()) {
+            try {
+                // Kết thúc ván cho đối thủ (để UI hiện kết quả rõ ràng)
+                room.setFinished(true);
+                opponentSession.sendMessage(new TextMessage("STATUS Opponent disconnected"));
+                opponentSession.sendMessage(new TextMessage("GAME_OVER winner=" + opponent.getSymbol() + " reason=DISCONNECT"));
+            } catch (IOException e) {
+                logError("Error notifying opponent about disconnect", e, opponent.getSessionId());
+            }
+        }
+
+        // Không xóa room ngay để không phá các flow khác trong lúc UI đang xử lý
+        // Room sẽ được xóa khi người còn lại bấm LEAVE / tìm trận mới
+    }
+
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         String sessionId = session.getId();
-        handleLeave(sessionId);
+
+        // QUAN TRỌNG:
+        // Không gọi handleLeave(sessionId) ở đây nữa vì LEAVE sẽ xóa room khỏi activeRooms,
+        // làm mất khả năng "chơi lại với đối thủ vừa chơi".
+        handleDisconnect(sessionId);
+
         sessions.remove(sessionId);
         players.remove(sessionId);
     }
