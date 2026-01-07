@@ -1,13 +1,16 @@
 package ut.edu.gamecaro.controller;
 
+import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
-import ut.edu.gamecaro.model.*;
+import ut.edu.gamecaro.model.GameResult;
+import ut.edu.gamecaro.model.GameRoom;
+import ut.edu.gamecaro.model.Player;
 import ut.edu.gamecaro.service.GameService;
 
 import java.io.IOException;
-import java.util.HashMap;
+import java.security.SecureRandom;
 import java.util.Map;
 import java.util.concurrent.*;
 
@@ -16,45 +19,59 @@ public class GameSocketHandler extends TextWebSocketHandler {
 
     private final GameService gameService;
 
-    // Map để lưu các phòng chờ quick play
+    // waiting / active / manual rooms
     private final Map<String, GameRoom> waitingRooms = new ConcurrentHashMap<>();
+    private final Map<String, GameRoom> activeRooms  = new ConcurrentHashMap<>();
+    private final Map<String, GameRoom> manualRooms  = new ConcurrentHashMap<>();
 
-    // Map để lưu phòng đang chơi
-    private final Map<String, GameRoom> activeRooms = new ConcurrentHashMap<>();
-
-    // Map để lưu phòng tạo thủ công
-    private final Map<String, GameRoom> manualRooms = new ConcurrentHashMap<>();
-
-    // Map sessionId -> roomId
+    // sessionId -> roomId
     private final Map<String, String> playerRoomMap = new ConcurrentHashMap<>();
 
+    // sessionId -> session / player
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, Player> players = new ConcurrentHashMap<>();
 
-    // ===== TIMER IMPLEMENTATION =====
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(10);
+    // timer per room
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(8);
     private final Map<String, ScheduledFuture<?>> turnTimers = new ConcurrentHashMap<>();
-    private static final long TURN_DURATION_SECONDS = 60; // 1 phút
+    private static final long TURN_DURATION_SECONDS = 60;
+
+    private final SecureRandom random = new SecureRandom();
+    private static final String ROOM_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
     public GameSocketHandler(GameService gameService) {
         this.gameService = gameService;
     }
 
+    @PreDestroy
+    public void shutdown() {
+        scheduler.shutdownNow();
+    }
+
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        try {
-            sessions.put(session.getId(), session);
-            session.sendMessage(new TextMessage("WELCOME Caro 3x3 - Quick Play & Create Room available"));
-        } catch (IOException e) {
-            logError("Error sending welcome message", e, session.getId());
-        }
+        sessions.put(session.getId(), session);
+        safeSend(session, "WELCOME Caro 3x3 - Quick Play & Create Room available");
+    }
+
+    @Override
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        String sessionId = session.getId();
+
+        // xử lý disconnect (không remove room ngay, nhưng game sẽ kết thúc + cancel timer)
+        handleDisconnect(sessionId);
+
+        sessions.remove(sessionId);
+        players.remove(sessionId);
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+        String payload = message.getPayload().trim();
+        String sessionId = session.getId();
+
         try {
-            String payload = message.getPayload().trim();
-            String sessionId = session.getId();
+            if (payload.isEmpty()) return;
 
             // ===== HELLO <name> =====
             if (payload.startsWith("HELLO")) {
@@ -62,205 +79,90 @@ public class GameSocketHandler extends TextWebSocketHandler {
                 return;
             }
 
-            // ===== QUICKPLAY =====
-            if (payload.equals("QUICKPLAY")) {
-                handleQuickPlay(session, sessionId);
+            // yêu cầu HELLO trước
+            if (!players.containsKey(sessionId)) {
+                safeSend(session, "ERROR Please send HELLO first");
                 return;
             }
 
-            // ===== CREATE_ROOM =====
-            if (payload.equals("CREATE_ROOM")) {
-                handleCreateRoom(session, sessionId);
-                return;
-            }
-
-            // ===== JOIN_ROOM <roomId> =====
-            if (payload.startsWith("JOIN_ROOM")) {
-                handleJoinRoom(session, sessionId, payload);
-                return;
-            }
-
-            // ===== CLICK <index> =====
-            if (payload.startsWith("CLICK")) {
-                handleClick(session, sessionId, payload);
-                return;
-            }
-
-            // ===== RESTART_REQUEST =====
-            if (payload.equals("RESTART_REQUEST")) {
-                handleRestartRequest(sessionId);
-                return;
-            }
-
-            // ===== RESTART_ACCEPT =====
-            if (payload.equals("RESTART_ACCEPT")) {
-                handleRestartAccept(sessionId);
-                return;
-            }
-
-            // ===== RESTART_DECLINE =====
-            if (payload.equals("RESTART_DECLINE")) {
-                handleRestartDecline(sessionId);
-                return;
-            }
-
-            // ===== LEAVE =====
-            if (payload.equals("LEAVE")) {
-                handleLeave(sessionId);
-                return;
+            switch (payload) {
+                case "QUICKPLAY" -> handleQuickPlay(session, sessionId);
+                case "CREATE_ROOM" -> handleCreateRoom(session, sessionId);
+                case "LEAVE" -> handleLeave(sessionId);
+                case "RESTART_REQUEST" -> handleRestartRequest(sessionId);
+                case "RESTART_ACCEPT" -> handleRestartAccept(sessionId);
+                case "RESTART_DECLINE" -> handleRestartDecline(sessionId);
+                default -> {
+                    if (payload.startsWith("JOIN_ROOM")) {
+                        handleJoinRoom(session, sessionId, payload);
+                        return;
+                    }
+                    if (payload.startsWith("CLICK")) {
+                        handleClick(session, sessionId, payload);
+                        return;
+                    }
+                    safeSend(session, "ERROR Unknown command");
+                }
             }
         } catch (Exception e) {
-            logError("Error handling message", e, session.getId());
+            logError("Unhandled error in handleTextMessage", e, sessionId);
+            safeSend(session, "ERROR Server error");
         }
     }
 
-    // Xử lý HELLO
-    private void handleHello(WebSocketSession session, String sessionId, String payload) throws IOException {
+    // ===== HELLO =====
+    private void handleHello(WebSocketSession session, String sessionId, String payload) {
         String name = payload.substring(5).trim();
         if (name.isEmpty()) {
-            session.sendMessage(new TextMessage("ERROR Name cannot be empty"));
+            safeSend(session, "ERROR Name cannot be empty");
             return;
         }
+
+        // clamp + sanitize nhẹ
+        name = name.replaceAll("\\s+", " ").trim();
+        if (name.length() > 18) name = name.substring(0, 18);
 
         Player player = new Player(sessionId, name, '?');
         players.put(sessionId, player);
-        session.sendMessage(new TextMessage("HELLO_OK Hello " + name));
+
+        safeSend(session, "HELLO_OK Hello " + name);
     }
 
-    // Xử lý CLICK
-    private void handleClick(WebSocketSession session, String sessionId, String payload) throws IOException {
-        Player player = players.get(sessionId);
-        if (player == null) {
-            session.sendMessage(new TextMessage("ERROR Player not found"));
+    // ===== QUICKPLAY =====
+    private void handleQuickPlay(WebSocketSession session, String sessionId) {
+        // nếu đang ở room khác thì bắt buộc LEAVE trước (tránh dính nhiều room)
+        if (playerRoomMap.containsKey(sessionId)) {
+            safeSend(session, "ERROR You are already in a room. Please LEAVE first.");
+            safeSend(session, "STATUS You are already in a room. Please LEAVE first.");
             return;
         }
 
-        String roomId = playerRoomMap.get(sessionId);
-        if (roomId == null) {
-            session.sendMessage(new TextMessage("ERROR You are not in a room"));
-            return;
-        }
+        Player p = players.get(sessionId);
+        if (p == null) return;
 
-        GameRoom room = activeRooms.get(roomId);
-        if (room == null) {
-            session.sendMessage(new TextMessage("ERROR Waiting for opponent to join"));
-            return;
-        }
-
-        int index;
-        try {
-            index = Integer.parseInt(payload.split(" ")[1]);
-        } catch (Exception e) {
-            session.sendMessage(new TextMessage("ERROR Invalid move format"));
-            return;
-        }
-
-        if (index < 0 || index > 8) {
-            session.sendMessage(new TextMessage("ERROR Index must be 0-8"));
-            return;
-        }
-
-        // Hủy timer cũ trước khi đánh
-        cancelTurnTimer(roomId);
-
-        GameResult result = gameService.makeMove(room, index, player.getSymbol());
-        sendBoardToRoom(roomId);
-
-        if (result.getType() == GameResult.ResultType.WIN) {
-            broadcastToRoom(roomId, "GAME_OVER winner=" + result.getWinner());
-        } else if (result.getType() == GameResult.ResultType.DRAW) {
-            broadcastToRoom(roomId, "GAME_OVER winner=DRAW");
-        } else if (!room.isFinished()) {
-            // Game chưa kết thúc, bắt đầu timer cho lượt tiếp theo
-            startTurnTimer(roomId, room.getCurrentTurn());
-            // Gửi thông tin lượt mới
-            broadcastToRoom(roomId, "TURN_START turn=" + room.getCurrentTurn() + " start=" + System.currentTimeMillis());
-        }
-    }
-
-    // Bắt đầu timer cho lượt
-    private void startTurnTimer(String roomId, char currentTurn) {
-        // Hủy timer cũ nếu có
-        cancelTurnTimer(roomId);
-
-        // Tạo timer mới
-        ScheduledFuture<?> future = scheduler.schedule(() -> {
-            handleTimeout(roomId, currentTurn);
-        }, TURN_DURATION_SECONDS, TimeUnit.SECONDS);
-
-        turnTimers.put(roomId, future);
-    }
-
-    // Xử lý hết giờ
-    private void handleTimeout(String roomId, char timedOutPlayer) {
-        GameRoom room = activeRooms.get(roomId);
-        if (room == null || room.isFinished()) return;
-
-        room.setFinished(true);
-
-        char winner;
-        if (timedOutPlayer == 'X') {
-            winner = 'O';
-        } else if (timedOutPlayer == 'O') {
-            winner = 'X';
-        } else {
-            try {
-                broadcastToRoom(roomId, "ERROR Invalid player");
-            } catch (IOException e) {
-                System.err.println("Failed to broadcast error: " + e.getMessage());
-            }
-            return;
-        }
-
-        try {
-            broadcastToRoom(roomId, "GAME_OVER winner=" + winner + " reason=TIMEOUT");
-        } catch (IOException e) {
-            System.err.println("Failed to broadcast game over: " + e.getMessage());
-        }
-
-        turnTimers.remove(roomId);
-    }
-
-    // Hủy timer
-    private void cancelTurnTimer(String roomId) {
-        ScheduledFuture<?> future = turnTimers.get(roomId);
-        if (future != null) {
-            future.cancel(false);
-            turnTimers.remove(roomId);
-        }
-    }
-
-    // Xử lý Quick Play
-    private void handleQuickPlay(WebSocketSession session, String sessionId) throws IOException {
-        Player player = players.get(sessionId);
-        if (player == null) {
-            session.sendMessage(new TextMessage("ERROR Please send HELLO first"));
-            return;
-        }
-
-        // Tìm phòng chờ có sẵn
-        GameRoom availableRoom = null;
-        String availableRoomId = null;
-
+        // Ghép an toàn: duyệt các waiting room và "claim" room bằng remove(roomId, room)
         for (Map.Entry<String, GameRoom> entry : waitingRooms.entrySet()) {
+            String roomId = entry.getKey();
             GameRoom room = entry.getValue();
-            if (room.getPlayerO() == null) {
-                availableRoom = room;
-                availableRoomId = entry.getKey();
-                break;
+
+            synchronized (room) {
+                if (room.getPlayerO() != null) continue;
+
+                // claim room: chỉ 1 thread remove được
+                if (!waitingRooms.remove(roomId, room)) continue;
+
+                // join room thành O
+                joinExistingRoomAsO(session, sessionId, p, roomId, room, false);
+                return;
             }
         }
 
-        if (availableRoom != null) {
-            joinExistingRoom(session, sessionId, player, availableRoomId, availableRoom, false);
-        } else {
-            createNewWaitingRoom(session, sessionId, player);
-        }
+        // Không có phòng chờ -> tạo mới
+        createNewWaitingRoom(session, sessionId, p);
     }
 
-    // Tạo phòng chờ mới (quick play)
-    private void createNewWaitingRoom(WebSocketSession session, String sessionId, Player player) throws IOException {
-        String roomId = "QUICK_" + (System.currentTimeMillis() % 10000);
+    private void createNewWaitingRoom(WebSocketSession session, String sessionId, Player player) {
+        String roomId = generateRoomId(6);
         GameRoom room = new GameRoom(roomId);
 
         Player xPlayer = new Player(sessionId, player.getName(), 'X');
@@ -270,429 +172,401 @@ public class GameSocketHandler extends TextWebSocketHandler {
         waitingRooms.put(roomId, room);
         playerRoomMap.put(sessionId, roomId);
 
-        session.sendMessage(new TextMessage("YOU_ARE X"));
-        session.sendMessage(new TextMessage("WAITING roomId=" + roomId));
-        session.sendMessage(new TextMessage("STATUS Waiting for opponent..."));
+        safeSend(session, "YOU_ARE X");
+        safeSend(session, "WAITING roomId=" + roomId);
+        safeSend(session, "STATUS Waiting for opponent...");
     }
 
-    // Tạo phòng thủ công
-    private void handleCreateRoom(WebSocketSession session, String sessionId) throws IOException {
-        Player player = players.get(sessionId);
-        if (player == null) {
-            session.sendMessage(new TextMessage("ERROR Please send HELLO first"));
+    // ===== CREATE ROOM (manual) =====
+    private void handleCreateRoom(WebSocketSession session, String sessionId) {
+        if (playerRoomMap.containsKey(sessionId)) {
+            safeSend(session, "ERROR You are already in a room. Please LEAVE first.");
+            safeSend(session, "STATUS You are already in a room. Please LEAVE first.");
             return;
         }
 
-        String roomId = generateRoomId();
+        Player p = players.get(sessionId);
+        if (p == null) return;
+
+        String roomId = generateRoomId(6);
         GameRoom room = new GameRoom(roomId);
 
-        Player xPlayer = new Player(sessionId, player.getName(), 'X');
+        Player xPlayer = new Player(sessionId, p.getName(), 'X');
         players.put(sessionId, xPlayer);
         room.setPlayerX(xPlayer);
 
         manualRooms.put(roomId, room);
         playerRoomMap.put(sessionId, roomId);
 
-        session.sendMessage(new TextMessage("YOU_ARE X"));
-        session.sendMessage(new TextMessage("ROOM_CREATED roomId=" + roomId));
-        session.sendMessage(new TextMessage("STATUS Room created! Share ID: " + roomId));
+        safeSend(session, "YOU_ARE X");
+        safeSend(session, "ROOM_CREATED roomId=" + roomId);
+        safeSend(session, "STATUS Room created! Share ID: " + roomId);
     }
 
-    // Join phòng thủ công
-    private void handleJoinRoom(WebSocketSession session, String sessionId, String payload) throws IOException {
-        Player player = players.get(sessionId);
-        if (player == null) {
-            session.sendMessage(new TextMessage("ERROR Please send HELLO first"));
+    // ===== JOIN ROOM =====
+    private void handleJoinRoom(WebSocketSession session, String sessionId, String payload) {
+        if (playerRoomMap.containsKey(sessionId)) {
+            safeSend(session, "ERROR You are already in a room. Please LEAVE first.");
+            safeSend(session, "STATUS You are already in a room. Please LEAVE first.");
             return;
         }
 
-        String[] parts = payload.split(" ");
+        String[] parts = payload.split("\\s+");
         if (parts.length < 2) {
-            session.sendMessage(new TextMessage("ERROR Room ID required"));
+            safeSend(session, "ERROR Room ID required");
             return;
         }
 
         String roomId = parts[1].trim().toUpperCase();
         GameRoom room = manualRooms.get(roomId);
-
         if (room == null) {
-            session.sendMessage(new TextMessage("ERROR Room not found"));
+            safeSend(session, "ERROR Room not found");
             return;
         }
 
-        if (room.getPlayerO() != null) {
-            session.sendMessage(new TextMessage("ERROR Room is full"));
-            return;
-        }
+        synchronized (room) {
+            if (room.getPlayerO() != null) {
+                safeSend(session, "ERROR Room is full");
+                return;
+            }
 
-        joinExistingRoom(session, sessionId, player, roomId, room, true);
+            // claim manual room
+            if (!manualRooms.remove(roomId, room)) {
+                safeSend(session, "ERROR Room is not available");
+                return;
+            }
+
+            Player p = players.get(sessionId);
+            if (p == null) return;
+
+            joinExistingRoomAsO(session, sessionId, p, roomId, room, true);
+        }
     }
 
-    // Join vào phòng có sẵn
-    private void joinExistingRoom(WebSocketSession session, String sessionId,
-                                  Player player, String roomId, GameRoom room, boolean isManualRoom) throws IOException {
+    private void joinExistingRoomAsO(WebSocketSession session, String sessionId,
+                                     Player player, String roomId, GameRoom room, boolean isManualRoom) {
         Player oPlayer = new Player(sessionId, player.getName(), 'O');
         players.put(sessionId, oPlayer);
         room.setPlayerO(oPlayer);
 
-        // Chuyển từ waitingRooms/manualRooms sang activeRooms
-        waitingRooms.remove(roomId);
-        manualRooms.remove(roomId);
+        // move to active
         activeRooms.put(roomId, room);
-
         playerRoomMap.put(sessionId, roomId);
+        // NOTE: player X đã có playerRoomMap từ lúc tạo room (waiting/manual)
 
-        // Bắt đầu timer cho lượt đầu tiên (X đi trước)
+        // Start first turn timer: X
         startTurnTimer(roomId, 'X');
 
-        // Thông báo cho player O
-        session.sendMessage(new TextMessage("YOU_ARE O"));
-        session.sendMessage(new TextMessage("MATCHED roomId=" + roomId + " vs=" + room.getPlayerX().getName()));
-        session.sendMessage(new TextMessage("TURN_START turn=X start=" + System.currentTimeMillis()));
+        // notify O
+        safeSend(session, "YOU_ARE O");
+        safeSend(session, (isManualRoom ? "JOINED" : "MATCHED") + " roomId=" + roomId + " vs=" + room.getPlayerX().getName());
+        safeSend(session, "TURN_START turn=X start=" + System.currentTimeMillis());
 
-        // Thông báo cho player X
+        // notify X
         WebSocketSession xSession = sessions.get(room.getPlayerX().getSessionId());
         if (xSession != null && xSession.isOpen()) {
-            try {
-                if (isManualRoom) {
-                    xSession.sendMessage(new TextMessage("JOINED roomId=" + roomId + " vs=" + player.getName()));
-                } else {
-                    xSession.sendMessage(new TextMessage("MATCHED roomId=" + roomId + " vs=" + player.getName()));
-                }
-                xSession.sendMessage(new TextMessage("STATUS Game started! Your turn (X)"));
-                xSession.sendMessage(new TextMessage("TURN_START turn=X start=" + System.currentTimeMillis()));
-            } catch (IOException e) {
-                logError("Error notifying player X", e, room.getPlayerX().getSessionId());
-            }
+            safeSend(xSession, "YOU_ARE X"); // đảm bảo X có symbol đúng
+            safeSend(xSession, (isManualRoom ? "JOINED" : "MATCHED") + " roomId=" + roomId + " vs=" + oPlayer.getName());
+            safeSend(xSession, "STATUS Game started! Your turn (X)");
+            safeSend(xSession, "TURN_START turn=X start=" + System.currentTimeMillis());
         }
 
-        session.sendMessage(new TextMessage("STATUS Game started! Opponent's turn (X)"));
-
-        // Gửi board trống cho cả 2
+        // send empty board to both
         sendBoardToRoom(roomId);
     }
 
-    // Xử lý yêu cầu restart
-    private void handleRestartRequest(String sessionId) {
-        try {
-            String roomId = playerRoomMap.get(sessionId);
-            if (roomId == null)
-                return;
-
-            GameRoom room = activeRooms.get(roomId);
-            if (room == null)
-                return;
-
-            Player requester = players.get(sessionId);
-            if (requester == null)
-                return;
-
-            Player opponent = (requester.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
-
-            if (opponent != null) {
-                WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
-                if (opponentSession != null && opponentSession.isOpen()) {
-                    opponentSession.sendMessage(new TextMessage("RESTART_OFFER from=" + requester.getName()));
-                } else {
-                    // Đối thủ không online -> báo lại cho requester để UI không bị "chờ vô hạn"
-                    WebSocketSession requesterSession = sessions.get(sessionId);
-                    if (requesterSession != null && requesterSession.isOpen()) {
-                        requesterSession.sendMessage(new TextMessage("STATUS Opponent is not connected"));
-                    }
-                }
-            }
-        } catch (IOException e) {
-            logError("Error sending restart offer", e, sessionId);
+    // ===== CLICK =====
+    private void handleClick(WebSocketSession session, String sessionId, String payload) {
+        Player player = players.get(sessionId);
+        if (player == null) {
+            safeSend(session, "ERROR Player not found");
+            return;
         }
-    }
 
-    // Xử lý đồng ý restart
-    private void handleRestartAccept(String sessionId) {
-        try {
-            String roomId = playerRoomMap.get(sessionId);
-            if (roomId == null)
-                return;
-
-            GameRoom room = activeRooms.get(roomId);
-            if (room == null)
-                return;
-
-            // Nếu thiếu 1 người (disconnect) thì không restart được
-            if (room.getPlayerX() == null || room.getPlayerO() == null) {
-                WebSocketSession s = sessions.get(sessionId);
-                if (s != null && s.isOpen()) {
-                    s.sendMessage(new TextMessage("STATUS Cannot restart: opponent not connected"));
-                }
-                return;
-            }
-
-            WebSocketSession xSession = sessions.get(room.getPlayerX().getSessionId());
-            WebSocketSession oSession = sessions.get(room.getPlayerO().getSessionId());
-            if (xSession == null || !xSession.isOpen() || oSession == null || !oSession.isOpen()) {
-                WebSocketSession s = sessions.get(sessionId);
-                if (s != null && s.isOpen()) {
-                    s.sendMessage(new TextMessage("STATUS Cannot restart: opponent not connected"));
-                }
-                return;
-            }
-
-            // Hủy timer cũ
-            cancelTurnTimer(roomId);
-
-            // Reset game
-            gameService.reset(room);
-
-            // Bắt đầu timer mới cho lượt X
-            startTurnTimer(roomId, 'X');
-
-            // Thông báo cho cả 2
-            broadcastToRoom(roomId, "STATUS Game restarted! " + room.getPlayerX().getName() + "'s turn (X)");
-            broadcastToRoom(roomId, "TURN_START turn=X start=" + System.currentTimeMillis());
-            sendBoardToRoom(roomId);
-        } catch (IOException e) {
-            logError("Error restarting game", e, sessionId);
-        }
-    }
-
-    // Xử lý từ chối restart
-    private void handleRestartDecline(String sessionId) {
-        try {
-            String roomId = playerRoomMap.get(sessionId);
-            if (roomId == null)
-                return;
-
-            Player decliner = players.get(sessionId);
-            GameRoom room = activeRooms.get(roomId);
-            if (room == null)
-                return;
-
-            Player opponent = null;
-            if (decliner != null) {
-                opponent = (decliner.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
-            }
-
-            if (opponent != null) {
-                WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
-                if (opponentSession != null && opponentSession.isOpen()) {
-                    // Gửi RESTART_DECLINED để frontend xử lý tìm đối thủ mới
-                    opponentSession.sendMessage(new TextMessage("RESTART_DECLINED from=" + (decliner != null ? decliner.getName() : "Unknown")));
-                }
-            }
-        } catch (IOException e) {
-            logError("Error sending restart decline", e, sessionId);
-        }
-    }
-
-    // Xử lý rời phòng
-    private void handleLeave(String sessionId) {
-        try {
-            String roomId = playerRoomMap.get(sessionId);
-            if (roomId != null) {
-                // Hủy timer
-                cancelTurnTimer(roomId);
-
-                // Thông báo cho đối thủ nếu có
-                GameRoom room = findRoom(roomId);
-                if (room != null) {
-                    Player leaver = players.get(sessionId);
-                    Player opponent = null;
-
-                    if (leaver != null) {
-                        opponent = (leaver.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
-                    } else {
-                        // fallback nếu không tìm thấy player trong map
-                        if (room.getPlayerX() != null && sessionId.equals(room.getPlayerX().getSessionId())) {
-                            opponent = room.getPlayerO();
-                        } else if (room.getPlayerO() != null && sessionId.equals(room.getPlayerO().getSessionId())) {
-                            opponent = room.getPlayerX();
-                        }
-                    }
-
-                    if (opponent != null) {
-                        WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
-                        if (opponentSession != null && opponentSession.isOpen()) {
-                            try {
-                                opponentSession.sendMessage(new TextMessage("OPPONENT_LEFT"));
-                                opponentSession.sendMessage(new TextMessage("STATUS Opponent left the game"));
-                            } catch (IOException e) {
-                                logError("Error notifying opponent", e, opponent.getSessionId());
-                            }
-                        }
-                    }
-
-                    // Xóa room khỏi tất cả maps (LEAVE là rời chủ động -> xoá luôn)
-                    waitingRooms.remove(roomId);
-                    manualRooms.remove(roomId);
-                    activeRooms.remove(roomId);
-                }
-
-                playerRoomMap.remove(sessionId);
-
-                WebSocketSession session = sessions.get(sessionId);
-                if (session != null && session.isOpen()) {
-                    session.sendMessage(new TextMessage("LEFT_ROOM"));
-                    session.sendMessage(new TextMessage("STATUS You left the room"));
-                }
-            }
-        } catch (IOException e) {
-            logError("Error handling leave", e, sessionId);
-        }
-    }
-
-    // ===== XỬ LÝ DISCONNECT (THÊM MỚI) =====
-    // Khác với LEAVE:
-    // - Disconnect là mất kết nối đột ngột -> không nên xóa room ngay nếu đang active
-    // - Giữ room để không phá flow "chơi lại với đối thủ vừa chơi" (khi cả 2 vẫn online)
-    // - Nhưng vẫn phải thông báo cho người còn lại và kết thúc ván cho đúng
-    private void handleDisconnect(String sessionId) {
         String roomId = playerRoomMap.get(sessionId);
+        if (roomId == null) {
+            safeSend(session, "ERROR You are not in a room");
+            return;
+        }
 
-        // Clean maps cơ bản
-        playerRoomMap.remove(sessionId);
+        GameRoom room = activeRooms.get(roomId);
+        if (room == null) {
+            safeSend(session, "ERROR Waiting for opponent to join");
+            return;
+        }
 
+        String[] parts = payload.split("\\s+");
+        if (parts.length < 2) {
+            safeSend(session, "ERROR Missing index");
+            return;
+        }
+
+        int index;
+        try {
+            index = Integer.parseInt(parts[1]);
+        } catch (NumberFormatException e) {
+            safeSend(session, "ERROR Invalid index");
+            return;
+        }
+
+        GameResult result = gameService.makeMove(room, index, player.getSymbol());
+
+        if (result.getType() == GameResult.ResultType.INVALID) {
+            String msg = (result.getMessage() != null) ? result.getMessage() : "Invalid move";
+            safeSend(session, "ERROR " + msg);
+            safeSend(session, "STATUS " + msg);
+            return; // QUAN TRỌNG: không sendBoard, không reset timer
+        }
+
+        // valid move -> update board to both
+        sendBoardToRoom(roomId);
+
+        if (result.getType() == GameResult.ResultType.WIN) {
+            cancelTurnTimer(roomId);
+            broadcastToRoom(roomId, "GAME_OVER winner=" + result.getWinner());
+            return;
+        }
+
+        if (result.getType() == GameResult.ResultType.DRAW) {
+            cancelTurnTimer(roomId);
+            broadcastToRoom(roomId, "GAME_OVER winner=DRAW");
+            return;
+        }
+
+        // continue -> start next turn timer + broadcast turn start
+        startTurnTimer(roomId, room.getCurrentTurn());
+        broadcastToRoom(roomId, "TURN_START turn=" + room.getCurrentTurn() + " start=" + System.currentTimeMillis());
+    }
+
+    // ===== TIMER =====
+    private void startTurnTimer(String roomId, char currentTurn) {
+        cancelTurnTimer(roomId);
+
+        ScheduledFuture<?> future = scheduler.schedule(() -> handleTimeout(roomId, currentTurn),
+                TURN_DURATION_SECONDS, TimeUnit.SECONDS);
+
+        turnTimers.put(roomId, future);
+    }
+
+    private void cancelTurnTimer(String roomId) {
+        ScheduledFuture<?> future = turnTimers.remove(roomId);
+        if (future != null) future.cancel(false);
+    }
+
+    private void handleTimeout(String roomId, char timedOutPlayer) {
+        // đảm bảo cleanup map trước
+        turnTimers.remove(roomId);
+
+        GameRoom room = activeRooms.get(roomId);
+        if (room == null) return;
+        if (room.isFinished()) return;
+
+        room.setFinished(true);
+
+        char winner = (timedOutPlayer == 'X') ? 'O' : 'X';
+        broadcastToRoom(roomId, "GAME_OVER winner=" + winner + " reason=TIMEOUT");
+    }
+
+    // ===== RESTART =====
+    private void handleRestartRequest(String sessionId) {
+        String roomId = playerRoomMap.get(sessionId);
         if (roomId == null) return;
 
-        // Nếu người này đang ở waiting/manual (chưa ghép) -> xóa phòng chờ
-        GameRoom waiting = waitingRooms.get(roomId);
-        if (waiting != null) {
-            waitingRooms.remove(roomId);
-            return;
-        }
-        GameRoom manual = manualRooms.get(roomId);
-        if (manual != null) {
-            manualRooms.remove(roomId);
-            return;
-        }
-
-        // Nếu đang chơi -> xử lý kết thúc ván + báo đối thủ
         GameRoom room = activeRooms.get(roomId);
         if (room == null) return;
 
-        // Hủy timer đang chạy
-        cancelTurnTimer(roomId);
+        Player requester = players.get(sessionId);
+        if (requester == null) return;
 
-        // Xác định leaver/opponent dựa theo sessionId
-        Player leaver = players.get(sessionId);
-        Player opponent = null;
-
-        if (leaver != null) {
-            opponent = (leaver.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
-        } else {
-            // fallback nếu player map đã bị mất trước khi vào đây
-            if (room.getPlayerX() != null && sessionId.equals(room.getPlayerX().getSessionId())) {
-                opponent = room.getPlayerO();
-            } else if (room.getPlayerO() != null && sessionId.equals(room.getPlayerO().getSessionId())) {
-                opponent = room.getPlayerX();
-            }
-        }
-
-        // Nếu không có đối thủ thì xóa room luôn
-        if (opponent == null) {
-            activeRooms.remove(roomId);
-            return;
-        }
+        Player opponent = (requester.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
+        if (opponent == null) return;
 
         WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
         if (opponentSession != null && opponentSession.isOpen()) {
-            try {
-                // Kết thúc ván cho đối thủ (để UI hiện kết quả rõ ràng)
-                room.setFinished(true);
-                opponentSession.sendMessage(new TextMessage("STATUS Opponent disconnected"));
-                opponentSession.sendMessage(new TextMessage("GAME_OVER winner=" + opponent.getSymbol() + " reason=DISCONNECT"));
-            } catch (IOException e) {
-                logError("Error notifying opponent about disconnect", e, opponent.getSessionId());
+            safeSend(opponentSession, "RESTART_OFFER from=" + requester.getName());
+        } else {
+            WebSocketSession requesterSession = sessions.get(sessionId);
+            if (requesterSession != null && requesterSession.isOpen()) {
+                safeSend(requesterSession, "STATUS Opponent is not connected");
+            }
+        }
+    }
+
+    private void handleRestartAccept(String sessionId) {
+        String roomId = playerRoomMap.get(sessionId);
+        if (roomId == null) return;
+
+        GameRoom room = activeRooms.get(roomId);
+        if (room == null) return;
+
+        if (room.getPlayerX() == null || room.getPlayerO() == null) {
+            WebSocketSession s = sessions.get(sessionId);
+            if (s != null && s.isOpen()) {
+                safeSend(s, "STATUS Cannot restart: opponent not connected");
+            }
+            return;
+        }
+
+        // reset
+        gameService.reset(room);
+
+        // start timer for X
+        startTurnTimer(roomId, 'X');
+
+        broadcastToRoom(roomId, "STATUS Game restarted! " + room.getPlayerX().getName() + "'s turn (X)");
+        broadcastToRoom(roomId, "TURN_START turn=X start=" + System.currentTimeMillis());
+        sendBoardToRoom(roomId);
+    }
+
+    private void handleRestartDecline(String sessionId) {
+        String roomId = playerRoomMap.get(sessionId);
+        if (roomId == null) return;
+
+        Player decliner = players.get(sessionId);
+        GameRoom room = activeRooms.get(roomId);
+        if (room == null) return;
+
+        Player opponent = null;
+        if (decliner != null) {
+            opponent = (decliner.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
+        }
+
+        if (opponent != null) {
+            WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
+            if (opponentSession != null && opponentSession.isOpen()) {
+                safeSend(opponentSession, "RESTART_DECLINED from=" + (decliner != null ? decliner.getName() : "Unknown"));
+            }
+        }
+    }
+
+    // ===== LEAVE / DISCONNECT =====
+    private void handleLeave(String sessionId) {
+        String roomId = playerRoomMap.get(sessionId);
+        if (roomId == null) return;
+
+        cancelTurnTimer(roomId);
+
+        GameRoom room = findRoom(roomId);
+        Player leaver = players.get(sessionId);
+
+        // remove mapping first
+        playerRoomMap.remove(sessionId);
+
+        if (room != null) {
+            // waiting/manual: xóa phòng luôn
+            if (waitingRooms.remove(roomId) != null || manualRooms.remove(roomId) != null) {
+                // ok
+            } else {
+                // active room: báo đối thủ + remove room
+                Player opponent = null;
+                if (leaver != null) {
+                    opponent = (leaver.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
+                }
+
+                if (opponent != null) {
+                    WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
+                    if (opponentSession != null && opponentSession.isOpen()) {
+                        safeSend(opponentSession, "OPPONENT_LEFT");
+                        safeSend(opponentSession, "STATUS Opponent left the room");
+                    }
+                }
+
+                activeRooms.remove(roomId);
             }
         }
 
-        // Không xóa room ngay để không phá các flow khác trong lúc UI đang xử lý
-        // Room sẽ được xóa khi người còn lại bấm LEAVE / tìm trận mới
+        WebSocketSession s = sessions.get(sessionId);
+        if (s != null && s.isOpen()) {
+            safeSend(s, "LEFT_ROOM");
+            safeSend(s, "STATUS You left the room");
+        }
     }
 
-    @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        String sessionId = session.getId();
+    private void handleDisconnect(String sessionId) {
+        String roomId = playerRoomMap.remove(sessionId);
+        if (roomId == null) return;
 
-        // QUAN TRỌNG:
-        // Không gọi handleLeave(sessionId) ở đây nữa vì LEAVE sẽ xóa room khỏi activeRooms,
-        // làm mất khả năng "chơi lại với đối thủ vừa chơi".
-        handleDisconnect(sessionId);
+        // nếu đang waiting/manual (chưa ghép) -> xóa luôn
+        if (waitingRooms.remove(roomId) != null) return;
+        if (manualRooms.remove(roomId) != null) return;
 
-        sessions.remove(sessionId);
-        players.remove(sessionId);
+        GameRoom room = activeRooms.get(roomId);
+        if (room == null) return;
+
+        // cancel timer để khỏi leak
+        cancelTurnTimer(roomId);
+
+        Player disconnected = players.get(sessionId);
+        Player opponent = null;
+
+        if (disconnected != null) {
+            opponent = (disconnected.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
+        } else {
+            // fallback
+            if (room.getPlayerX() != null && sessionId.equals(room.getPlayerX().getSessionId())) opponent = room.getPlayerO();
+            if (room.getPlayerO() != null && sessionId.equals(room.getPlayerO().getSessionId())) opponent = room.getPlayerX();
+        }
+
+        if (opponent != null) {
+            room.setFinished(true);
+            broadcastToRoom(roomId, "STATUS Opponent disconnected");
+            broadcastToRoom(roomId, "GAME_OVER winner=" + opponent.getSymbol() + " reason=DISCONNECT");
+        }
+
+        // giữ room lại (UI đối thủ đang hiện overlay), sẽ clean khi họ LEAVE
     }
 
-    // ===== Helper Methods =====
+    // ===== SEND HELPERS =====
+    private void safeSend(WebSocketSession session, String msg) {
+        if (session == null || !session.isOpen()) return;
+        try {
+            session.sendMessage(new TextMessage(msg));
+        } catch (IOException e) {
+            logError("Error sending message", e, session.getId());
+        }
+    }
 
-    // Tìm room trong tất cả maps
+    private void broadcastToRoom(String roomId, String msg) {
+        GameRoom room = activeRooms.get(roomId);
+        if (room == null) return;
+
+        if (room.getPlayerX() != null) {
+            WebSocketSession x = sessions.get(room.getPlayerX().getSessionId());
+            safeSend(x, msg);
+        }
+        if (room.getPlayerO() != null) {
+            WebSocketSession o = sessions.get(room.getPlayerO().getSessionId());
+            safeSend(o, msg);
+        }
+    }
+
+    private void sendBoardToRoom(String roomId) {
+        GameRoom room = activeRooms.get(roomId);
+        if (room == null) return;
+
+        String boardMsg = "BOARD " + new String(room.getBoard());
+        broadcastToRoom(roomId, boardMsg);
+    }
+
     private GameRoom findRoom(String roomId) {
         GameRoom room = activeRooms.get(roomId);
-        if (room != null)
-            return room;
+        if (room != null) return room;
 
         room = waitingRooms.get(roomId);
-        if (room != null)
-            return room;
+        if (room != null) return room;
 
         return manualRooms.get(roomId);
     }
 
-    // Tạo room ID ngẫu nhiên
-    private String generateRoomId() {
-        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 6; i++) {
-            int index = (int) (Math.random() * chars.length());
-            sb.append(chars.charAt(index));
+    private String generateRoomId(int len) {
+        StringBuilder sb = new StringBuilder(len);
+        for (int i = 0; i < len; i++) {
+            int idx = random.nextInt(ROOM_CHARS.length());
+            sb.append(ROOM_CHARS.charAt(idx));
         }
         return sb.toString();
     }
 
-    // Gửi board đến phòng
-    private void sendBoardToRoom(String roomId) throws IOException {
-        GameRoom room = activeRooms.get(roomId);
-        if (room == null)
-            return;
-
-        StringBuilder sb = new StringBuilder();
-        for (char c : room.getBoard())
-            sb.append(c);
-        String boardMsg = "BOARD " + sb.toString();
-
-        broadcastToRoom(roomId, boardMsg);
-    }
-
-    // Broadcast message đến phòng
-    private void broadcastToRoom(String roomId, String msg) throws IOException {
-        GameRoom room = activeRooms.get(roomId);
-        if (room == null)
-            return;
-
-        // Gửi cho player X
-        if (room.getPlayerX() != null) {
-            WebSocketSession xSession = sessions.get(room.getPlayerX().getSessionId());
-            if (xSession != null && xSession.isOpen()) {
-                try {
-                    xSession.sendMessage(new TextMessage(msg));
-                } catch (IOException e) {
-                    logError("Error sending to player X", e, room.getPlayerX().getSessionId());
-                }
-            }
-        }
-
-        // Gửi cho player O
-        if (room.getPlayerO() != null) {
-            WebSocketSession oSession = sessions.get(room.getPlayerO().getSessionId());
-            if (oSession != null && oSession.isOpen()) {
-                try {
-                    oSession.sendMessage(new TextMessage(msg));
-                } catch (IOException e) {
-                    logError("Error sending to player O", e, room.getPlayerO().getSessionId());
-                }
-            }
-        }
-    }
-
-    // Log lỗi
     private void logError(String message, Exception e, String sessionId) {
         System.err.println("Error [Session: " + sessionId + "]: " + message);
         e.printStackTrace();
