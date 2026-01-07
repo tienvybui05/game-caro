@@ -22,36 +22,59 @@
         </div>
 
         <div id="loginError" class="login-error hidden"></div>
+        <div class="tiny-muted">Tip: mở 2 tab để test nhanh.</div>
     </div>
 </div>
 
 <!-- Screen 2: Game -->
 <div id="gameScreen" class="screen game-screen hidden">
     <div class="game-header">
-        <div class="player-info">
-            <span class="player-name" id="playerName"></span>
-            <span class="player-badge" id="playerSymbol"></span>
+        <div class="left-info">
+            <div class="player-info">
+                <span class="player-name" id="playerName"></span>
+                <span class="player-badge" id="playerSymbol"></span>
+            </div>
+
+            <div class="opponent-info">
+                <span class="muted-small">Đối thủ</span>
+                <div class="op-row">
+                    <span class="op-name" id="opponentName">-</span>
+                    <span class="player-badge" id="opponentSymbol">?</span>
+                </div>
+            </div>
         </div>
-        <div id="gameStatus" class="game-status">Đang kết nối...</div>
+
+        <div class="right-info">
+            <div class="right-top">
+                <div class="conn">
+                    <span id="connDot" class="dot"></span>
+                    <span id="connText" class="conn-text">Disconnected</span>
+                </div>
+
+                <div class="chip" id="roomChip">
+                    <span class="muted-small">Room</span>
+                    <span id="roomIdText" class="chip-strong">-</span>
+                    <button id="copyRoomBtn" class="chip-btn" title="Copy Room ID">Copy</button>
+                </div>
+            </div>
+
+            <div id="gameStatus" class="game-status">Đang kết nối...</div>
+        </div>
+
     </div>
 
-    <!-- CÁC NÚT NẰM NGANG 1 HÀNG (SỬA MỚI) -->
+    <!-- Controls -->
     <div class="game-controls-horizontal">
-        <button id="quickBtn" class="btn-action btn-quick">⚡ Tìm trận</button>
-        <button id="createBtn" class="btn-action">🏠 Tạo phòng</button>
+        <button id="quickBtn" class="btn-action btn-quick" disabled>⚡ Tìm trận</button>
+        <button id="createBtn" class="btn-action" disabled>🏠 Tạo phòng</button>
+
         <div class="room-join-horizontal">
-            <input id="roomInput" placeholder="Room ID" maxlength="6" />
-            <button id="joinRoomBtn" class="btn-action">📥 Vào</button>
+            <input id="roomInput" placeholder="Room ID" maxlength="12" />
+            <button id="joinRoomBtn" class="btn-action" disabled>📥 Vào</button>
         </div>
     </div>
 
     <div class="board-area">
-        <!-- TIMER CONTAINER (THÊM MỚI - sẽ được tạo bằng JavaScript) -->
-        <!-- <div class="timer-container">
-            <div id="myTimer" class="timer my-timer">60</div>
-            <div id="opponentTimer" class="timer opponent-timer">60</div>
-        </div> -->
-
         <div id="board" class="board"></div>
 
         <!-- Game Over Overlay -->
@@ -68,6 +91,7 @@
         </div>
     </div>
 
+    <!--  dưới chỉ để matchInfo (vs ai...), không hiện roomId nữa -->
     <div class="game-info">
         <div id="matchInfo" class="match-info"></div>
         <button id="leaveBtn" class="btn-leave hidden">🚪 Rời phòng</button>
@@ -79,7 +103,9 @@
     </details>
 </div>
 
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
 <script src="/app.js"></script>
 </body>
-
 </html>
