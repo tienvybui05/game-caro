@@ -64,6 +64,9 @@ const TURN_DURATION = 60;
 let timerEl = null;
 let timerFillEl = null;
 
+// FIX fallback: nếu STATUS báo đối thủ rời/mất kết nối mà GAME_OVER bị rơi
+let pendingOpponentAutoWin = null;
+
 // ===== Utility =====
 function addLog(msg) {
     log.textContent += msg + "\n";
@@ -372,12 +375,34 @@ copyRoomBtn.onclick = async () => {
     }
 };
 
+// FIX #2: QuickBtn luôn LEAVE trước nếu đang trong room (tránh kẹt phòng / already in room)
 quickBtn.onclick = () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
     hideOverlay();
+    resetTimers();
+
+    // nếu đang trong room -> rời trước rồi mới tìm trận (giống overlay findNewBtn)
+    if (currentRoomId) {
+        ws.send("RESTART_DECLINE");
+        ws.send("LEAVE");
+
+        setRoomId(null);
+        leaveBtn.classList.add("hidden");
+        setMatchInfo("");
+
+        toast("Đang tìm trận...", "ok");
+
+        setTimeout(() => {
+            ws.send("QUICKPLAY");
+            setStatus("Đang tìm...");
+        }, 300);
+
+        return;
+    }
+
     ws.send("QUICKPLAY");
     setStatus("Đang tìm...");
-    resetTimers();
     toast("Đang tìm trận...", "ok");
 };
 
@@ -567,6 +592,19 @@ function connectWebSocket() {
         if (msg.startsWith("STATUS ")) {
             const statusMsg = msg.substring(7);
 
+            // FIX #1 fallback: nếu đối thủ rời/mất kết nối mà GAME_OVER bị rơi -> stop timer + auto-win
+            const lower = statusMsg.toLowerCase();
+            if (lower.includes("opponent disconnected") || lower.includes("opponent left the room")) {
+                stopTurnTimer();
+
+                clearTimeout(pendingOpponentAutoWin);
+                pendingOpponentAutoWin = setTimeout(() => {
+                    if (!gameEnded) {
+                        showOverlay("🔌", "Đối thủ rời/mất kết nối. Bạn thắng!");
+                    }
+                }, 700);
+            }
+
             // Nếu server gửi dạng: "Room created! Share ID: ABC123"
             if (/share id/i.test(statusMsg)) {
                 const m = statusMsg.match(/Share ID:\s*([A-Z0-9_]+)/i);
@@ -608,6 +646,8 @@ function connectWebSocket() {
 
         // GAME_OVER
         if (msg.startsWith("GAME_OVER")) {
+            clearTimeout(pendingOpponentAutoWin);
+
             const winnerMatch = msg.match(/winner=([^ ]+)/);
             const reasonMatch = msg.match(/reason=([^ ]+)/);
 
@@ -643,6 +683,8 @@ function connectWebSocket() {
 
         // OPPONENT_LEFT
         if (msg.startsWith("OPPONENT_LEFT")) {
+            clearTimeout(pendingOpponentAutoWin);
+
             setStatus("Đối thủ rời");
             setMatchInfo("");
             hideOverlay();
@@ -664,6 +706,8 @@ function connectWebSocket() {
 
         // LEFT_ROOM
         if (msg.startsWith("LEFT_ROOM")) {
+            clearTimeout(pendingOpponentAutoWin);
+
             setRoomId(null);
 
             mySymbol = null;

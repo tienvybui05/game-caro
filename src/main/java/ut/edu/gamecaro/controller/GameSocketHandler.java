@@ -471,16 +471,22 @@ public class GameSocketHandler extends TextWebSocketHandler {
                 Player opponent = null;
                 if (leaver != null) {
                     opponent = (leaver.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
+                } else {
+                    // fallback
+                    if (room.getPlayerX() != null && sessionId.equals(room.getPlayerX().getSessionId())) opponent = room.getPlayerO();
+                    if (room.getPlayerO() != null && sessionId.equals(room.getPlayerO().getSessionId())) opponent = room.getPlayerX();
                 }
 
+                // FIX #1: Nếu 1 người LEAVE trong active room -> kết thúc game cho người còn lại
                 if (opponent != null) {
                     WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
                     if (opponentSession != null && opponentSession.isOpen()) {
-                        safeSend(opponentSession, "OPPONENT_LEFT");
                         safeSend(opponentSession, "STATUS Opponent left the room");
+                        safeSend(opponentSession, "GAME_OVER winner=" + opponent.getSymbol() + " reason=LEAVE");
                     }
                 }
 
+                room.setFinished(true);
                 activeRooms.remove(roomId);
             }
         }
@@ -524,6 +530,8 @@ public class GameSocketHandler extends TextWebSocketHandler {
         }
 
         // giữ room lại (UI đối thủ đang hiện overlay), sẽ clean khi họ LEAVE
+        // NOTE: cleanup active room để tránh stuck state/timer ở client khi đối thủ đi tìm trận mới
+        activeRooms.remove(roomId);
     }
 
     // ===== SEND HELPERS =====
