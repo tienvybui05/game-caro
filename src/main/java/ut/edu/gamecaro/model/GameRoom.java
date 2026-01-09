@@ -52,6 +52,25 @@ public class GameRoom {
         touch();
     }
 
+    // ===== REMATCH: SWAP SIDES (X <-> O) =====
+    public void swapSides() {
+        if (playerX == null || playerO == null) return;
+
+        Player oldX = playerX;
+        Player oldO = playerO;
+
+        // đổi symbol
+        oldX.setSymbol('O');
+        oldO.setSymbol('X');
+
+        // đổi reference để invariant luôn đúng:
+        // playerX luôn là người có symbol 'X', playerO luôn là người có symbol 'O'
+        playerX = oldO;
+        playerO = oldX;
+
+        touch();
+    }
+
     public char[] getBoard() {
         return board;
     }

@@ -407,13 +407,23 @@ public class GameSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // reset
-        gameService.reset(room);
+        // ===== REMATCH: swap sides + reset board =====
+        synchronized (room) {
+            room.swapSides();
+            // reset
+            gameService.reset(room);
+        }
 
         // start timer for X
         startTurnTimer(roomId, 'X');
 
-        broadcastToRoom(roomId, "STATUS Game restarted! " + room.getPlayerX().getName() + "'s turn (X)");
+        // gửi lại YOU_ARE để client cập nhật phe mới
+        WebSocketSession xSession = sessions.get(room.getPlayerX().getSessionId());
+        WebSocketSession oSession = sessions.get(room.getPlayerO().getSessionId());
+        safeSend(xSession, "YOU_ARE X");
+        safeSend(oSession, "YOU_ARE O");
+
+        broadcastToRoom(roomId, "STATUS Game restarted! (swapped sides) " + room.getPlayerX().getName() + "'s turn (X)");
         broadcastToRoom(roomId, "TURN_START turn=X start=" + System.currentTimeMillis());
         sendBoardToRoom(roomId);
     }
