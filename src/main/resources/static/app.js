@@ -338,6 +338,7 @@ findNewBtn.onclick = () => {
 
     setMatchInfo("");
     resetTimers();
+    clearChat();
 
     toast("Đang tìm đối thủ mới...", "ok");
     addLog("🔄 Tìm đối thủ mới...");
@@ -435,6 +436,7 @@ leaveBtn.onclick = () => {
     hideOverlay();
     ws.send("LEAVE");
     resetTimers();
+    clearChat(); // ✅ XÓA CHAT
     toast("Đã rời phòng", "ok");
 };
 
@@ -446,6 +448,9 @@ sendChatBtn.onclick = () => {
     chatInput.value = "";
 };
 
+function clearChat() {
+    chatMessages.innerHTML = "";
+}
 
 // ===== WebSocket =====
 function connectWebSocket() {
@@ -550,6 +555,7 @@ function connectWebSocket() {
             leaveBtn.classList.remove("hidden");
 
             resetForNewGame();
+            clearChat();
             toast("Đã ghép trận ", "ok");
             return;
         }
@@ -721,6 +727,7 @@ function connectWebSocket() {
 
             leaveBtn.classList.add("hidden");
             resetTimers();
+            clearChat();
             toast("Đối thủ đã rời", "warn");
             return;
         }
@@ -743,6 +750,7 @@ function connectWebSocket() {
             setMatchInfo("");
             leaveBtn.classList.add("hidden");
             resetTimers();
+            clearChat();
             toast("Bạn đã rời phòng", "ok");
         }
     };
