@@ -27,6 +27,10 @@ const copyRoomBtn = document.getElementById("copyRoomBtn");
 
 const toastEl = document.getElementById("toast");
 
+const chatMessages = document.getElementById("chatMessages");
+const chatInput = document.getElementById("chatInput");
+const sendChatBtn = document.getElementById("sendChatBtn");
+
 // Buttons
 const quickBtn = document.getElementById("quickBtn");
 const createBtn = document.getElementById("createBtn");
@@ -434,6 +438,15 @@ leaveBtn.onclick = () => {
     toast("Đã rời phòng", "ok");
 };
 
+sendChatBtn.onclick = () => {
+    const text = chatInput.value.trim();
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+    ws.send("CHAT " + text);
+    chatInput.value = "";
+};
+
+
 // ===== WebSocket =====
 function connectWebSocket() {
     const scheme = (location.protocol === "https:") ? "wss" : "ws";
@@ -501,6 +514,14 @@ function connectWebSocket() {
             toast(msg, "err");
             return;
         }
+        if (msg.startsWith("CHAT_FROM ")) {
+            const div = document.createElement("div");
+            div.textContent = msg.replace("CHAT_FROM ", "");
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            return;
+        }
+
 
         // WAITING
         if (msg.startsWith("WAITING")) {

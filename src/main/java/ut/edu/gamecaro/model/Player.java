@@ -1,15 +1,19 @@
 package ut.edu.gamecaro.model;
 
+import org.springframework.web.socket.WebSocketSession;
+
 public class Player {
 
     private String sessionId; // WebSocket session
     private String name;
     private char symbol; // 'X' hoặc 'O'
 
-    public Player(String sessionId, String name, char symbol) {
+    private WebSocketSession session;
+    public Player(String sessionId, String name, char symbol, WebSocketSession session) {
         this.sessionId = sessionId;
         this.name = name;
         this.symbol = symbol;
+        this.session = session;
     }
 
     public String getSessionId() {
@@ -34,5 +38,9 @@ public class Player {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public WebSocketSession getSession() {
+        return session;
     }
 }

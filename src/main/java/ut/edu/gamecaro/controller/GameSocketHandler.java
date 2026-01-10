@@ -69,6 +69,7 @@ public class GameSocketHandler extends TextWebSocketHandler {
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
         String payload = message.getPayload().trim();
         String sessionId = session.getId();
+        String msg = message.getPayload();
 
         try {
             if (payload.isEmpty()) return;
@@ -84,6 +85,12 @@ public class GameSocketHandler extends TextWebSocketHandler {
                 safeSend(session, "ERROR Please send HELLO first");
                 return;
             }
+
+            if (msg.startsWith("CHAT ")) {
+                handleChat(session, msg.substring(5));
+                return;
+            }
+
 
             switch (payload) {
                 case "QUICKPLAY" -> handleQuickPlay(session, sessionId);
@@ -110,6 +117,37 @@ public class GameSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    private void handleChat(WebSocketSession sender, String content) throws IOException {
+
+        // 1. Lấy roomId của người gửi
+        String roomId = playerRoomMap.get(sender.getId());
+        if (roomId == null) return;
+
+        // 2. Lấy phòng
+        GameRoom room = activeRooms.get(roomId);
+        if (room == null) return;
+
+        // 3. Xác định người gửi là X hay O
+        Player from;
+        if (room.getPlayerX() != null
+                && room.getPlayerX().getSession().getId().equals(sender.getId())) {
+            from = room.getPlayerX();
+        } else {
+            from = room.getPlayerO();
+        }
+
+        String payload = "CHAT_FROM " + from.getName() + ": " + content;
+
+        // 4. Gửi cho cả 2 người trong phòng
+        if (room.getPlayerX() != null && room.getPlayerX().getSession().isOpen()) {
+            room.getPlayerX().getSession().sendMessage(new TextMessage(payload));
+        }
+        if (room.getPlayerO() != null && room.getPlayerO().getSession().isOpen()) {
+            room.getPlayerO().getSession().sendMessage(new TextMessage(payload));
+        }
+    }
+
+
     // ===== HELLO =====
     private void handleHello(WebSocketSession session, String sessionId, String payload) {
         String name = payload.substring(5).trim();
@@ -122,7 +160,7 @@ public class GameSocketHandler extends TextWebSocketHandler {
         name = name.replaceAll("\\s+", " ").trim();
         if (name.length() > 18) name = name.substring(0, 18);
 
-        Player player = new Player(sessionId, name, '?');
+        Player player = new Player(sessionId, name, '?', session);
         players.put(sessionId, player);
 
         safeSend(session, "HELLO_OK Hello " + name);
@@ -165,7 +203,7 @@ public class GameSocketHandler extends TextWebSocketHandler {
         String roomId = generateRoomId(6);
         GameRoom room = new GameRoom(roomId);
 
-        Player xPlayer = new Player(sessionId, player.getName(), 'X');
+        Player xPlayer = new Player(sessionId, player.getName(), 'X', session);
         players.put(sessionId, xPlayer);
         room.setPlayerX(xPlayer);
 
@@ -191,9 +229,9 @@ public class GameSocketHandler extends TextWebSocketHandler {
         String roomId = generateRoomId(6);
         GameRoom room = new GameRoom(roomId);
 
-        Player xPlayer = new Player(sessionId, p.getName(), 'X');
-        players.put(sessionId, xPlayer);
-        room.setPlayerX(xPlayer);
+        // ✅ CHỈ UPDATE SYMBOL – KHÔNG TẠO PLAYER MỚI
+        p.setSymbol('X');
+        room.setPlayerX(p);
 
         manualRooms.put(roomId, room);
         playerRoomMap.put(sessionId, roomId);
@@ -202,6 +240,7 @@ public class GameSocketHandler extends TextWebSocketHandler {
         safeSend(session, "ROOM_CREATED roomId=" + roomId);
         safeSend(session, "STATUS Room created! Share ID: " + roomId);
     }
+
 
     // ===== JOIN ROOM =====
     private void handleJoinRoom(WebSocketSession session, String sessionId, String payload) {
@@ -245,7 +284,7 @@ public class GameSocketHandler extends TextWebSocketHandler {
 
     private void joinExistingRoomAsO(WebSocketSession session, String sessionId,
                                      Player player, String roomId, GameRoom room, boolean isManualRoom) {
-        Player oPlayer = new Player(sessionId, player.getName(), 'O');
+        Player oPlayer = new Player(sessionId, player.getName(), 'O', session);
         players.put(sessionId, oPlayer);
         room.setPlayerO(oPlayer);
 
