@@ -448,6 +448,10 @@ sendChatBtn.onclick = () => {
     chatInput.value = "";
 };
 
+chatInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") sendChatBtn.click();
+});
+
 function clearChat() {
     chatMessages.innerHTML = "";
 }
@@ -520,10 +524,36 @@ function connectWebSocket() {
             return;
         }
         if (msg.startsWith("CHAT_FROM ")) {
+            const content = msg.replace("CHAT_FROM ", "");
+            const colonIdx = content.indexOf(":");
+            let senderName = "";
+            let msgText = content;
+
+            if (colonIdx > 0) {
+                senderName = content.substring(0, colonIdx).trim();
+                msgText = content.substring(colonIdx + 1).trim();
+            }
+
+            const isMe = senderName === playerName;
+
             const div = document.createElement("div");
-            div.textContent = msg.replace("CHAT_FROM ", "");
+            div.className = "chat-msg " + (isMe ? "me" : "other");
+
+            if (senderName) {
+                const senderSpan = document.createElement("span");
+                senderSpan.className = "sender";
+                senderSpan.textContent = isMe ? "Bạn" : senderName;
+                div.appendChild(senderSpan);
+            }
+
+            const textNode = document.createTextNode(msgText);
+            div.appendChild(textNode);
+
             chatMessages.appendChild(div);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Scroll chat body instead of chat messages
+            const chatBody = chatMessages.parentElement;
+            if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
             return;
         }
 
