@@ -10,6 +10,8 @@ import ut.edu.gamecaro.model.Player;
 import ut.edu.gamecaro.service.GameService;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -296,16 +298,20 @@ public class GameSocketHandler extends TextWebSocketHandler {
         // Start first turn timer: X
         startTurnTimer(roomId, 'X');
 
+        // ===== URL-ENCODE opponent names (vs=...) =====
+        String xNameEncoded = encodeForWire(room.getPlayerX() != null ? room.getPlayerX().getName() : "");
+        String oNameEncoded = encodeForWire(oPlayer.getName());
+
         // notify O
         safeSend(session, "YOU_ARE O");
-        safeSend(session, (isManualRoom ? "JOINED" : "MATCHED") + " roomId=" + roomId + " vs=" + room.getPlayerX().getName());
+        safeSend(session, (isManualRoom ? "JOINED" : "MATCHED") + " roomId=" + roomId + " vs=" + xNameEncoded);
         safeSend(session, "TURN_START turn=X start=" + System.currentTimeMillis());
 
         // notify X
         WebSocketSession xSession = sessions.get(room.getPlayerX().getSessionId());
         if (xSession != null && xSession.isOpen()) {
             safeSend(xSession, "YOU_ARE X"); // đảm bảo X có symbol đúng
-            safeSend(xSession, (isManualRoom ? "JOINED" : "MATCHED") + " roomId=" + roomId + " vs=" + oPlayer.getName());
+            safeSend(xSession, (isManualRoom ? "JOINED" : "MATCHED") + " roomId=" + roomId + " vs=" + oNameEncoded);
             safeSend(xSession, "STATUS Game started! Your turn (X)");
             safeSend(xSession, "TURN_START turn=X start=" + System.currentTimeMillis());
         }
@@ -507,14 +513,7 @@ public class GameSocketHandler extends TextWebSocketHandler {
                 // ok
             } else {
                 // active room: báo đối thủ + remove room
-                Player opponent = null;
-                if (leaver != null) {
-                    opponent = (leaver.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
-                } else {
-                    // fallback
-                    if (room.getPlayerX() != null && sessionId.equals(room.getPlayerX().getSessionId())) opponent = room.getPlayerO();
-                    if (room.getPlayerO() != null && sessionId.equals(room.getPlayerO().getSessionId())) opponent = room.getPlayerX();
-                }
+                Player opponent = resolveOpponentBySession(room, sessionId, leaver);
 
                 // FIX #1: Nếu 1 người LEAVE trong active room -> kết thúc game cho người còn lại
                 if (opponent != null) {
@@ -552,25 +551,60 @@ public class GameSocketHandler extends TextWebSocketHandler {
         cancelTurnTimer(roomId);
 
         Player disconnected = players.get(sessionId);
-        Player opponent = null;
 
-        if (disconnected != null) {
-            opponent = (disconnected.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
-        } else {
-            // fallback
-            if (room.getPlayerX() != null && sessionId.equals(room.getPlayerX().getSessionId())) opponent = room.getPlayerO();
-            if (room.getPlayerO() != null && sessionId.equals(room.getPlayerO().getSessionId())) opponent = room.getPlayerX();
-        }
+        // ===== FIX (HƯỚNG 1): DISCONNECT của X hoặc O đều kết thúc game cho người còn lại =====
+        Player opponent = resolveOpponentBySession(room, sessionId, disconnected);
 
-        if (opponent != null) {
-            room.setFinished(true);
-            broadcastToRoom(roomId, "STATUS Opponent disconnected");
-            broadcastToRoom(roomId, "GAME_OVER winner=" + opponent.getSymbol() + " reason=DISCONNECT");
+        // end game only once
+        synchronized (room) {
+            if (!room.isFinished()) {
+                room.setFinished(true);
+
+                if (opponent != null) {
+                    WebSocketSession opponentSession = sessions.get(opponent.getSessionId());
+                    if (opponentSession != null && opponentSession.isOpen()) {
+                        safeSend(opponentSession, "STATUS Opponent disconnected");
+                        safeSend(opponentSession, "GAME_OVER winner=" + opponent.getSymbol() + " reason=DISCONNECT");
+                    }
+                }
+            }
         }
 
         // giữ room lại (UI đối thủ đang hiện overlay), sẽ clean khi họ LEAVE
         // NOTE: cleanup active room để tránh stuck state/timer ở client khi đối thủ đi tìm trận mới
         activeRooms.remove(roomId);
+    }
+
+    // ===== FIX helper: ưu tiên xác định đối thủ bằng sessionId (ổn định hơn symbol) =====
+    private Player resolveOpponentBySession(GameRoom room, String sessionId, Player maybePlayer) {
+        if (room == null) return null;
+
+        // 1) ưu tiên theo sessionId trong room (ổn định nhất)
+        if (room.getPlayerX() != null && sessionId.equals(room.getPlayerX().getSessionId())) {
+            return room.getPlayerO();
+        }
+        if (room.getPlayerO() != null && sessionId.equals(room.getPlayerO().getSessionId())) {
+            return room.getPlayerX();
+        }
+
+        // 2) fallback theo symbol (giữ lại logic cũ)
+        Player opponent = null;
+        if (maybePlayer != null) {
+            opponent = (maybePlayer.getSymbol() == 'X') ? room.getPlayerO() : room.getPlayerX();
+        } else {
+            // fallback cuối
+            if (room.getPlayerX() != null && sessionId.equals(room.getPlayerX().getSessionId())) opponent = room.getPlayerO();
+            if (room.getPlayerO() != null && sessionId.equals(room.getPlayerO().getSessionId())) opponent = room.getPlayerX();
+        }
+        return opponent;
+    }
+
+    // ===== URL-ENCODE helper (vs=...) =====
+    private String encodeForWire(String s) {
+        if (s == null) return "";
+        // URLEncoder encode space -> '+', client decodeURIComponent không đổi '+' thành space
+        // => thay '+' thành '%20' để client decode ổn định
+        return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
     // ===== SEND HELPERS =====

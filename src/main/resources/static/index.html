@@ -9,119 +9,129 @@
 </head>
 
 <body>
-    <!-- Screen 1: Nhập tên -->
-    <div id="loginScreen" class="screen login-screen">
-        <div class="login-box">
-            <div class="game-logo">🎮</div>
-            <h1>Caro 3x3</h1>
-            <p class="subtitle">Chơi online với bạn bè</p>
+<!-- Screen 1: Nhập tên -->
+<div id="loginScreen" class="screen login-screen">
+    <div class="login-box">
+        <div class="game-logo">🎮</div>
+        <h1>Caro 3x3</h1>
+        <p class="subtitle">Chơi online với bạn bè</p>
 
-            <div class="login-form">
-                <input id="nameInput" type="text" placeholder="Nhập tên của bạn..." maxlength="18" autofocus />
-                <button id="startBtn" class="btn-start">Bắt đầu chơi</button>
+        <div class="login-form">
+            <input id="nameInput" type="text" placeholder="Nhập tên của bạn..." maxlength="18" autofocus />
+            <button id="startBtn" class="btn-start">Bắt đầu chơi</button>
+        </div>
+
+        <div id="loginError" class="login-error hidden"></div>
+        <div class="tiny-muted">Tip: mở 2 tab để test nhanh.</div>
+    </div>
+</div>
+
+<!-- Screen 2: Game -->
+<div id="gameScreen" class="screen game-screen hidden">
+    <div class="game-header">
+        <div class="left-info">
+            <div class="player-info">
+                <span class="player-name" id="playerName"></span>
+                <span class="player-badge" id="playerSymbol"></span>
             </div>
 
-            <div id="loginError" class="login-error hidden"></div>
-            <div class="tiny-muted">Tip: mở 2 tab để test nhanh.</div>
+            <div class="opponent-info">
+                <span class="muted-small">Đối thủ</span>
+                <div class="op-row">
+                    <span class="op-name" id="opponentName">-</span>
+                    <span class="player-badge" id="opponentSymbol">?</span>
+                </div>
+            </div>
         </div>
+
+        <div class="right-info">
+            <div class="right-top">
+                <div class="conn">
+                    <span id="connDot" class="dot"></span>
+                    <span id="connText" class="conn-text">Disconnected</span>
+                </div>
+
+                <div class="chip" id="roomChip">
+                    <span class="muted-small">Room</span>
+                    <span id="roomIdText" class="chip-strong">-</span>
+                    <button id="copyRoomBtn" class="chip-btn" title="Copy Room ID">Copy</button>
+                </div>
+            </div>
+
+            <div id="gameStatus" class="game-status">Đang kết nối...</div>
+        </div>
+
     </div>
 
-    <!-- Screen 2: Game -->
-    <div id="gameScreen" class="screen game-screen hidden">
-        <div class="game-header">
-            <div class="left-info">
-                <div class="player-info">
-                    <span class="player-name" id="playerName"></span>
-                    <span class="player-badge" id="playerSymbol"></span>
-                </div>
-
-                <div class="opponent-info">
-                    <span class="muted-small">Đối thủ</span>
-                    <div class="op-row">
-                        <span class="op-name" id="opponentName">-</span>
-                        <span class="player-badge" id="opponentSymbol">?</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="right-info">
-                <div class="right-top">
-                    <div class="conn">
-                        <span id="connDot" class="dot"></span>
-                        <span id="connText" class="conn-text">Disconnected</span>
-                    </div>
-
-                    <div class="chip" id="roomChip">
-                        <span class="muted-small">Room</span>
-                        <span id="roomIdText" class="chip-strong">-</span>
-                        <button id="copyRoomBtn" class="chip-btn" title="Copy Room ID">Copy</button>
-                    </div>
-                </div>
-
-                <div id="gameStatus" class="game-status">Đang kết nối...</div>
-            </div>
-
+    <!-- Controls (Option 1: Tabs) -->
+    <div class="game-controls-horizontal">
+        <div class="controls-tabs">
+            <button id="tabQuick" class="tab-btn active">🎮 Chơi nhanh</button>
+            <button id="tabJoin" class="tab-btn">🔑 Vào phòng</button>
         </div>
 
-        <!-- Controls -->
-        <div class="game-controls-horizontal">
-            <button id="quickBtn" class="btn-action btn-quick" disabled>⚡ Tìm trận</button>
-            <button id="createBtn" class="btn-action" disabled>🏠 Tạo phòng</button>
+        <div class="controls-row">
+            <div id="panelQuick" class="controls-panel">
+                <button id="quickBtn" class="btn-action btn-quick" disabled>⚡ Tìm trận</button>
+                <button id="createBtn" class="btn-action" disabled>🏠 Tạo phòng</button>
+            </div>
 
-            <div class="room-join-horizontal">
-                <input id="roomInput" placeholder="Room ID" maxlength="12" />
-                <button id="joinRoomBtn" class="btn-action" disabled>📥 Vào</button>
+            <div id="panelJoin" class="controls-panel hidden">
+                <div class="room-join-horizontal">
+                    <input id="roomInput" placeholder="Nhập Room ID để vào phòng" maxlength="12" />
+                    <button id="joinRoomBtn" class="btn-action" disabled>📥 Vào</button>
+                </div>
             </div>
 
             <button id="leaveBtn" class="btn-leave hidden">🚪 Rời</button>
         </div>
+    </div>
 
-        <div class="board-area">
-            <div id="board" class="board"></div>
+    <div class="board-area">
+        <div id="board" class="board"></div>
 
-            <!-- Game Over Overlay -->
-            <div id="gameOverlay" class="game-overlay hidden">
-                <div class="overlay-box">
-                    <div id="resultIcon" class="result-icon"></div>
-                    <div id="resultText" class="result-text"></div>
-                    <div id="overlayMessage" class="overlay-message hidden"></div>
-                    <div class="overlay-buttons">
-                        <button id="playAgainBtn" class="btn-play">🔄 Chơi tiếp</button>
-                        <button id="findNewBtn" class="btn-new">🔍 Tìm mới</button>
-                    </div>
+        <!-- Game Over Overlay -->
+        <div id="gameOverlay" class="game-overlay hidden">
+            <div class="overlay-box">
+                <div id="resultIcon" class="result-icon"></div>
+                <div id="resultText" class="result-text"></div>
+                <div id="overlayMessage" class="overlay-message hidden"></div>
+                <div class="overlay-buttons">
+                    <button id="playAgainBtn" class="btn-play">🔄 Chơi tiếp</button>
+                    <button id="findNewBtn" class="btn-new">🔍 Tìm mới</button>
                 </div>
             </div>
         </div>
-
-        <div id="matchInfo" class="match-info"></div>
-
-        <div class="chat-box">
-            <div class="chat-header">
-                <span class="chat-icon">💬</span>
-                <span class="chat-title">Trò chuyện</span>
-            </div>
-            <div class="chat-input-row">
-                <input id="chatInput" placeholder="Nhập tin nhắn..." maxlength="200" />
-                <button id="sendChatBtn" class="btn-send">
-                    <span class="send-icon">➤</span>
-                </button>
-            </div>
-            <div class="chat-body">
-                <div id="chatMessages" class="chat-messages"></div>
-            </div>
-        </div>
-
-
-        <details class="log-section">
-            <summary>📋 Nhật ký</summary>
-            <pre id="log" class="log"></pre>
-        </details>
     </div>
 
-    <!-- Toast -->
-    <div id="toast" class="toast hidden"></div>
+    <div id="matchInfo" class="match-info"></div>
 
-    <script src="/app.js"></script>
+    <div class="chat-box">
+        <div class="chat-header">
+            <span class="chat-icon">💬</span>
+            <span class="chat-title">Trò chuyện</span>
+        </div>
+        <div class="chat-input-row">
+            <input id="chatInput" placeholder="Nhập tin nhắn..." maxlength="200" />
+            <button id="sendChatBtn" class="btn-send">
+                <span class="send-icon">➤</span>
+            </button>
+        </div>
+        <div class="chat-body">
+            <div id="chatMessages" class="chat-messages"></div>
+        </div>
+    </div>
+
+    <details class="log-section">
+        <summary>📋 Nhật ký</summary>
+        <pre id="log" class="log"></pre>
+    </details>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="/app.js"></script>
 </body>
 
 </html>

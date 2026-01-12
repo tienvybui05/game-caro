@@ -43,9 +43,9 @@ body {
 /* ===== LOGIN SCREEN ===== */
 .login-screen {
     background:
-        radial-gradient(circle at 20% 20%, rgba(124, 58, 237, 0.3) 0%, transparent 40%),
-        radial-gradient(circle at 80% 80%, rgba(0, 212, 255, 0.2) 0%, transparent 40%),
-        var(--bg);
+            radial-gradient(circle at 20% 20%, rgba(124, 58, 237, 0.3) 0%, transparent 40%),
+            radial-gradient(circle at 80% 80%, rgba(0, 212, 255, 0.2) 0%, transparent 40%),
+            var(--bg);
 }
 
 .login-box {
@@ -152,8 +152,8 @@ body {
     gap: 8px;
     min-height: 100vh;
     background:
-        radial-gradient(circle at 50% 0%, rgba(124, 58, 237, 0.15) 0%, transparent 50%),
-        var(--bg);
+            radial-gradient(circle at 50% 0%, rgba(124, 58, 237, 0.15) 0%, transparent 50%),
+            var(--bg);
 }
 
 .game-header {
@@ -200,7 +200,6 @@ body {
     text-align: right;
     width: 100%;
 }
-
 
 .player-info {
     display: flex;
@@ -249,11 +248,20 @@ body {
     align-items: center;
     gap: 8px;
     margin-top: 4px;
+
+    /* IMPORTANT: cho phép text co lại trong flex (ellipsis hoạt động ổn) */
+    min-width: 0;
 }
 
 .op-name {
     font-weight: 700;
     font-size: 14px;
+
+    /* 1 dòng + ... */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .conn {
@@ -290,15 +298,68 @@ body {
     font-size: 13px;
 }
 
-/* ===== GAME CONTROLS ===== */
+/* ===== GAME CONTROLS (Option 1: Tabs) ===== */
 .game-controls-horizontal {
-    display: flex;
-    gap: 8px;
-    justify-content: center;
-    align-items: center;
     width: 100%;
     max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    justify-content: center;
+    align-items: stretch;
+}
+
+.controls-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
+}
+
+.tab-btn {
+    flex: 1;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.90);
+    padding: 10px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.18s;
+    white-space: nowrap;
+}
+
+.tab-btn:hover {
+    background: rgba(255, 255, 255, 0.10);
+    transform: translateY(-1px);
+}
+
+.tab-btn.active {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.18), rgba(124, 58, 237, 0.18));
+    border-color: rgba(0, 212, 255, 0.25);
+    box-shadow: 0 0 0 6px rgba(0, 212, 255, 0.06);
+}
+
+.controls-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
     flex-wrap: nowrap;
+}
+
+.controls-panel {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+}
+
+.controls-panel.hidden {
+    display: none;
 }
 
 .btn-action {
@@ -347,7 +408,7 @@ body {
     color: var(--text);
     padding: 10px;
     border-radius: 12px;
-    width: 110px;
+    width: 190px;
     font-size: 14px;
     text-align: center;
     outline: none;
@@ -674,6 +735,7 @@ body {
 }
 
 .match-info {
+    display: none;
     color: rgba(255, 255, 255, 0.70);
     font-size: 12px;
 }
@@ -687,6 +749,7 @@ body {
     font-size: 12px;
     cursor: pointer;
     transition: all 0.18s;
+    white-space: nowrap;
 }
 
 .btn-leave:hover {
@@ -955,14 +1018,69 @@ body {
     border-color: rgba(255, 165, 2, 0.25);
 }
 
+/* ===== COMPACT HEIGHT (kéo chat lên đẹp khi fullscreen/chiều cao thấp) ===== */
+@media (max-height: 780px) {
+    .game-screen {
+        padding: 8px 12px;
+        gap: 6px;
+    }
+
+    .game-header {
+        padding: 10px 12px;
+    }
+
+    .left-info {
+        gap: 6px;
+    }
+
+    .opponent-info {
+        padding: 6px 8px;
+        min-width: 170px;
+    }
+
+    .game-controls-horizontal {
+        gap: 6px;
+    }
+
+    .controls-tabs {
+        padding: 5px;
+    }
+
+    .tab-btn {
+        padding: 8px 10px;
+        font-size: 12px;
+    }
+
+    .btn-action {
+        padding: 9px 12px;
+        font-size: 13px;
+    }
+
+    .timer-container {
+        margin-bottom: 8px;
+    }
+
+    .timer-wrap {
+        padding: 8px 10px;
+    }
+
+    .timer {
+        font-size: 28px;
+    }
+
+    .chat-body {
+        max-height: 70px;
+    }
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 420px) {
-    .game-controls-horizontal {
+    .controls-row {
         flex-wrap: wrap;
     }
 
     .room-join-horizontal input {
-        width: 90px;
+        width: 170px;
     }
 
     .board {

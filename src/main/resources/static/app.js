@@ -36,6 +36,12 @@ const quickBtn = document.getElementById("quickBtn");
 const createBtn = document.getElementById("createBtn");
 const joinRoomBtn = document.getElementById("joinRoomBtn");
 
+// Tabs (Option 1)
+const tabQuick = document.getElementById("tabQuick");
+const tabJoin = document.getElementById("tabJoin");
+const panelQuick = document.getElementById("panelQuick");
+const panelJoin = document.getElementById("panelJoin");
+
 // Overlay
 const gameOverlay = document.getElementById("gameOverlay");
 const resultIcon = document.getElementById("resultIcon");
@@ -95,6 +101,23 @@ function setConnState(state) {
     connText.textContent = state === "on" ? "Connected" : (state === "err" ? "Error" : "Disconnected");
 }
 
+// ===== URL Decode Name (fix hiển thị tiếng Việt + dấu cách) =====
+function decodeName(raw) {
+    if (raw == null) return raw;
+    const s = String(raw).trim();
+    if (!s) return s;
+
+    // hỗ trợ cả %20 lẫn '+' (URLEncoder hay dùng '+')
+    const normalized = s.replace(/\+/g, "%20");
+    try {
+        // chỉ decode nếu có dấu % để tránh decode nhầm chuỗi thường
+        if (normalized.includes("%")) return decodeURIComponent(normalized);
+        return s;
+    } catch {
+        return s;
+    }
+}
+
 function updateSymbolBadge() {
     playerSymbolEl.textContent = mySymbol || "?";
     playerSymbolEl.className = "player-badge";
@@ -109,7 +132,7 @@ function updateSymbolBadge() {
 }
 
 function setOpponent(name) {
-    opponentName = name || "-";
+    opponentName = decodeName(name || "-") || "-";
     opponentNameEl.textContent = opponentName;
 }
 
@@ -117,6 +140,25 @@ function setRoomId(roomId) {
     currentRoomId = roomId || null;
     roomIdText.textContent = currentRoomId || "-";
     copyRoomBtn.disabled = !currentRoomId;
+}
+
+// ===== Tabs (Option 1) =====
+function selectTab(which) {
+    if (!tabQuick || !tabJoin || !panelQuick || !panelJoin) return;
+
+    const isQuick = which === "quick";
+    tabQuick.classList.toggle("active", isQuick);
+    tabJoin.classList.toggle("active", !isQuick);
+
+    panelQuick.classList.toggle("hidden", !isQuick);
+    panelJoin.classList.toggle("hidden", isQuick);
+}
+
+if (tabQuick && tabJoin) {
+    tabQuick.onclick = () => selectTab("quick");
+    tabJoin.onclick = () => selectTab("join");
+    // mặc định tab quick
+    selectTab("quick");
 }
 
 // ===== Board =====
@@ -386,6 +428,7 @@ quickBtn.onclick = () => {
 
     hideOverlay();
     resetTimers();
+    selectTab("quick");
 
     // nếu đang trong room -> rời trước rồi mới tìm trận (giống overlay findNewBtn)
     if (currentRoomId) {
@@ -413,6 +456,7 @@ quickBtn.onclick = () => {
 
 createBtn.onclick = () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    selectTab("quick");
     ws.send("CREATE_ROOM");
     resetTimers();
     toast("Đã gửi yêu cầu tạo phòng", "ok");
@@ -420,6 +464,8 @@ createBtn.onclick = () => {
 
 joinRoomBtn.onclick = () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    selectTab("join");
+
     const roomId = roomInput.value.trim().toUpperCase();
     if (!roomId) {
         toast("Nhập Room ID trước nhé", "warn");
@@ -489,6 +535,8 @@ function connectWebSocket() {
 
         createTimerElements();
         renderBoard();
+
+        selectTab("quick");
     };
 
     ws.onerror = () => {
@@ -523,6 +571,7 @@ function connectWebSocket() {
             toast(msg, "err");
             return;
         }
+
         if (msg.startsWith("CHAT_FROM ")) {
             const content = msg.replace("CHAT_FROM ", "");
             const colonIdx = content.indexOf(":");
@@ -557,7 +606,6 @@ function connectWebSocket() {
             return;
         }
 
-
         // WAITING
         if (msg.startsWith("WAITING")) {
             const m = msg.match(/roomId=([A-Z0-9_]+)/);
@@ -569,24 +617,30 @@ function connectWebSocket() {
             resetTimers();
             setOpponent("-");
             toast("Đang chờ người chơi...", "ok");
+            selectTab("quick");
             return;
         }
 
         // MATCHED / JOINED
         if (msg.startsWith("MATCHED") || msg.startsWith("JOINED")) {
-            const vsMatch = msg.match(/vs=([^\s]+)/);
+            // FIX: lấy phần sau vs= tới hết dòng (hỗ trợ tên có dấu cách) + decode URL
+            const vsMatch = msg.match(/vs=(.*)$/);
             const roomMatch = msg.match(/roomId=([A-Z0-9_]+)/);
 
+            const rawVs = vsMatch ? vsMatch[1].trim() : "";
+            const vsName = decodeName(rawVs);
+
             if (roomMatch) setRoomId(roomMatch[1]);
-            if (vsMatch) setOpponent(vsMatch[1]);
+            if (rawVs) setOpponent(vsName);
 
             setStatus("Đang chơi");
-            setMatchInfo(vsMatch ? `vs ${vsMatch[1]}` : "Đang chơi");
+            setMatchInfo(rawVs ? `vs ${vsName}` : "Đang chơi");
             leaveBtn.classList.remove("hidden");
 
             resetForNewGame();
             clearChat();
             toast("Đã ghép trận ", "ok");
+            selectTab("quick");
             return;
         }
 
@@ -601,6 +655,7 @@ function connectWebSocket() {
             resetTimers();
             setOpponent("-");
             toast("Tạo phòng thành công", "ok");
+            selectTab("quick");
             return;
         }
 
@@ -782,6 +837,7 @@ function connectWebSocket() {
             resetTimers();
             clearChat();
             toast("Bạn đã rời phòng", "ok");
+            selectTab("quick");
         }
     };
 }
