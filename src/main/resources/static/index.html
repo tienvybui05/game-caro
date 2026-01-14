@@ -1,4 +1,3 @@
-<!doctype html>
 <html lang="vi">
 
 <head>
@@ -28,108 +27,194 @@
 
 <!-- Screen 2: Game -->
 <div id="gameScreen" class="screen game-screen hidden">
-    <div class="game-header">
-        <div class="left-info">
-            <div class="player-info">
-                <span class="player-name" id="playerName"></span>
-                <span class="player-badge" id="playerSymbol"></span>
+    <div class="container">
+        <!-- Bên trái: Các nút điều khiển -->
+        <div class="left-column">
+            <div class="controls-container">
+                <div class="controls-header">
+                    <h3>🎮 Điều khiển</h3>
+                    <div class="conn">
+                        <span id="connDot" class="dot"></span>
+                        <span id="connText" class="conn-text">Kết nối...</span>
+                    </div>
+                </div>
+
+                <div class="controls-tabs">
+                    <button id="tabQuick" class="tab-btn active">⚡ Chơi nhanh</button>
+                    <button id="tabJoin" class="tab-btn">🔑 Vào phòng</button>
+                </div>
+
+                <div class="controls-content">
+                    <div id="panelQuick" class="controls-panel">
+                        <button id="quickBtn" class="btn-action btn-quick" disabled>🎯 Tìm đối thủ</button>
+                        <button id="createBtn" class="btn-action" disabled>🏠 Tạo phòng</button>
+                    </div>
+
+                    <div id="panelJoin" class="controls-panel hidden">
+                        <div class="room-join">
+                            <input id="roomInput" placeholder="Nhập Room ID" maxlength="12" />
+                            <button id="joinRoomBtn" class="btn-action" disabled>📥 Vào phòng</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="room-info">
+                    <div class="room-info-header">
+                        <span class="muted-small">Room ID</span>
+                        <button id="copyRoomBtn" class="chip-btn" title="Copy Room ID">Copy</button>
+                    </div>
+                    <div id="roomIdText" class="room-id">-</div>
+                </div>
+
+                <div class="player-info">
+                    <div class="info-row">
+                        <span class="info-label">Bạn:</span>
+                        <span class="info-value" id="playerName">-</span>
+                        <span class="player-badge" id="playerSymbol">?</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Đối thủ:</span>
+                        <span class="info-value" id="opponentName">Đang chờ...</span>
+                        <span class="player-badge" id="opponentSymbol">?</span>
+                    </div>
+                </div>
+
+                <div id="gameStatus" class="game-status">Chào mừng!</div>
+
+                <div class="controls-actions">
+                    <button id="leaveBtn" class="btn-leave hidden">🚪 Rời phòng</button>
+                </div>
             </div>
 
-            <div class="opponent-info">
-                <span class="muted-small">Đối thủ</span>
-                <div class="op-row">
-                    <span class="op-name" id="opponentName">-</span>
-                    <span class="player-badge" id="opponentSymbol">?</span>
-                </div>
+            <div class="instructions">
+                <h3>📝 Hướng dẫn</h3>
+                <ul>
+                    <li>Thắng khi có 3 ô liên tiếp (ngang/dọc/chéo)</li>
+                    <li><strong>Chơi nhanh</strong>: Tìm đối thủ ngẫu nhiên</li>
+                    <li><strong>Tạo phòng</strong>: Tạo phòng riêng và mời bạn</li>
+                    <li><strong>Vào phòng</strong>: Nhập ID phòng để vào</li>
+                    <li>Chat với đối thủ ở bên phải</li>
+                </ul>
             </div>
         </div>
 
-        <div class="right-info">
-            <div class="right-top">
-                <div class="conn">
-                    <span id="connDot" class="dot"></span>
-                    <span id="connText" class="conn-text">Disconnected</span>
+        <!-- Ở giữa: Trò chơi -->
+        <div class="center-column">
+            <div class="game-header">
+                <div class="game-title">
+                    <h1>Caro 3x3</h1>
+                    <div class="game-subtitle">Online Multiplayer</div>
                 </div>
 
-                <div class="chip" id="roomChip">
-                    <span class="muted-small">Room</span>
-                    <span id="roomIdText" class="chip-strong">-</span>
-                    <button id="copyRoomBtn" class="chip-btn" title="Copy Room ID">Copy</button>
+                <div class="player-cards">
+                    <div class="player-card you">
+                        <div class="player-card-icon">👤</div>
+                        <div class="player-card-content">
+                            <div class="player-card-label">Bạn</div>
+                            <div class="player-card-name" id="playerNameDisplay">-</div>
+                        </div>
+                        <div class="player-card-symbol" id="playerSymbolDisplay">?</div>
+                    </div>
+
+                    <div class="vs">VS</div>
+
+                    <div class="player-card opponent">
+                        <div class="player-card-icon">👥</div>
+                        <div class="player-card-content">
+                            <div class="player-card-label">Đối thủ</div>
+                            <div class="player-card-name" id="opponentNameDisplay">Đang chờ...</div>
+                        </div>
+                        <div class="player-card-symbol" id="opponentSymbolDisplay">?</div>
+                    </div>
                 </div>
             </div>
 
-            <div id="gameStatus" class="game-status">Đang kết nối...</div>
+            <!-- THÊM PHẦN TIMER Ở ĐÂY -->
+            <div class="timer-container">
+                <div class="timer-wrap">
+                    <div class="timer-top">
+                        <div class="timer-label">THỜI GIAN CÒN LẠI</div>
+                        <div id="timer" class="timer">--:--</div>
+                    </div>
+                    <div class="timer-bar">
+                        <div id="timerFill" class="timer-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="board-area">
+                <div id="board" class="board"></div>
+
+                <!-- Game Over Overlay -->
+                <div id="gameOverlay" class="game-overlay hidden">
+                    <div class="overlay-box">
+                        <div id="resultIcon" class="result-icon"></div>
+                        <div id="resultText" class="result-text"></div>
+                        <div id="overlayMessage" class="overlay-message hidden"></div>
+                        <div class="overlay-buttons">
+                            <button id="playAgainBtn" class="btn-play">🔄 Chơi tiếp</button>
+                            <button id="findNewBtn" class="btn-new">🔍 Tìm mới</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="matchInfo" class="match-info"></div>
+
+            <details class="log-section">
+                <summary>📋 Nhật ký trận đấu</summary>
+                <pre id="log" class="log"></pre>
+            </details>
         </div>
 
+        <!-- Bên phải: Chat box -->
+        <div class="right-column">
+            <div class="chat-box">
+                <div class="chat-header">
+                    <span class="chat-icon">💬</span>
+                    <span class="chat-title">Trò chuyện</span>
+                    <button id="leaveBtnSmall" class="btn-leave-small hidden">🚪 Rời</button>
+                </div>
+
+                <div class="chat-body">
+                    <div id="chatMessages" class="chat-messages"></div>
+                </div>
+
+                <div class="chat-input-row">
+                    <input id="chatInput" placeholder="Nhập tin nhắn..." maxlength="200" />
+                    <button id="sendChatBtn" class="btn-send">
+                        <span class="send-icon">➤</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="game-stats">
+                <h3>📊 Thống kê</h3>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalGames">0</div>
+                        <div class="stat-label">Tổng trận</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="wins">0</div>
+                        <div class="stat-label">Thắng</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="losses">0</div>
+                        <div class="stat-label">Thua</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="draws">0</div>
+                        <div class="stat-label">Hòa</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Controls (Option 1: Tabs) -->
-    <div class="game-controls-horizontal">
-        <div class="controls-tabs">
-            <button id="tabQuick" class="tab-btn active">🎮 Chơi nhanh</button>
-            <button id="tabJoin" class="tab-btn">🔑 Vào phòng</button>
-        </div>
-
-        <div class="controls-row">
-            <div id="panelQuick" class="controls-panel">
-                <button id="quickBtn" class="btn-action btn-quick" disabled>⚡ Tìm trận</button>
-                <button id="createBtn" class="btn-action" disabled>🏠 Tạo phòng</button>
-            </div>
-
-            <div id="panelJoin" class="controls-panel hidden">
-                <div class="room-join-horizontal">
-                    <input id="roomInput" placeholder="Nhập Room ID để vào phòng" maxlength="12" />
-                    <button id="joinRoomBtn" class="btn-action" disabled>📥 Vào</button>
-                </div>
-            </div>
-
-            <button id="leaveBtn" class="btn-leave hidden">🚪 Rời</button>
-        </div>
-    </div>
-
-    <div class="board-area">
-        <div id="board" class="board"></div>
-
-        <!-- Game Over Overlay -->
-        <div id="gameOverlay" class="game-overlay hidden">
-            <div class="overlay-box">
-                <div id="resultIcon" class="result-icon"></div>
-                <div id="resultText" class="result-text"></div>
-                <div id="overlayMessage" class="overlay-message hidden"></div>
-                <div class="overlay-buttons">
-                    <button id="playAgainBtn" class="btn-play">🔄 Chơi tiếp</button>
-                    <button id="findNewBtn" class="btn-new">🔍 Tìm mới</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="matchInfo" class="match-info"></div>
-
-    <div class="chat-box">
-        <div class="chat-header">
-            <span class="chat-icon">💬</span>
-            <span class="chat-title">Trò chuyện</span>
-        </div>
-        <div class="chat-input-row">
-            <input id="chatInput" placeholder="Nhập tin nhắn..." maxlength="200" />
-            <button id="sendChatBtn" class="btn-send">
-                <span class="send-icon">➤</span>
-            </button>
-        </div>
-        <div class="chat-body">
-            <div id="chatMessages" class="chat-messages"></div>
-        </div>
-    </div>
-
-    <details class="log-section">
-        <summary>📋 Nhật ký</summary>
-        <pre id="log" class="log"></pre>
-    </details>
+    <!-- Toast -->
+    <div id="toast" class="toast hidden"></div>
 </div>
-
-<!-- Toast -->
-<div id="toast" class="toast hidden"></div>
 
 <script src="/app.js"></script>
 </body>

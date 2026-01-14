@@ -5,44 +5,50 @@ const nameInput = document.getElementById("nameInput");
 const startBtn = document.getElementById("startBtn");
 const loginError = document.getElementById("loginError");
 
+// Player info elements
 const playerNameEl = document.getElementById("playerName");
+const playerNameDisplay = document.getElementById("playerNameDisplay");
 const playerSymbolEl = document.getElementById("playerSymbol");
+const playerSymbolDisplay = document.getElementById("playerSymbolDisplay");
 
 const opponentNameEl = document.getElementById("opponentName");
+const opponentNameDisplay = document.getElementById("opponentNameDisplay");
 const opponentSymbolEl = document.getElementById("opponentSymbol");
+const opponentSymbolDisplay = document.getElementById("opponentSymbolDisplay");
 
+// Connection elements
 const connDot = document.getElementById("connDot");
 const connText = document.getElementById("connText");
 
+// Game status elements
 const gameStatus = document.getElementById("gameStatus");
 const matchInfo = document.getElementById("matchInfo");
 
+// Board and room elements
 const board = document.getElementById("board");
 const log = document.getElementById("log");
 const roomInput = document.getElementById("roomInput");
-const leaveBtn = document.getElementById("leaveBtn");
-
 const roomIdText = document.getElementById("roomIdText");
 const copyRoomBtn = document.getElementById("copyRoomBtn");
 
-const toastEl = document.getElementById("toast");
-
-const chatMessages = document.getElementById("chatMessages");
-const chatInput = document.getElementById("chatInput");
-const sendChatBtn = document.getElementById("sendChatBtn");
+// Timer elements
+const timerEl = document.getElementById("timer");
+const timerFillEl = document.getElementById("timerFill");
 
 // Buttons
 const quickBtn = document.getElementById("quickBtn");
 const createBtn = document.getElementById("createBtn");
 const joinRoomBtn = document.getElementById("joinRoomBtn");
+const leaveBtn = document.getElementById("leaveBtn");
+const leaveBtnSmall = document.getElementById("leaveBtnSmall");
 
-// Tabs (Option 1)
+// Tabs
 const tabQuick = document.getElementById("tabQuick");
 const tabJoin = document.getElementById("tabJoin");
 const panelQuick = document.getElementById("panelQuick");
 const panelJoin = document.getElementById("panelJoin");
 
-// Overlay
+// Overlay elements
 const gameOverlay = document.getElementById("gameOverlay");
 const resultIcon = document.getElementById("resultIcon");
 const resultText = document.getElementById("resultText");
@@ -50,11 +56,25 @@ const overlayMessage = document.getElementById("overlayMessage");
 const playAgainBtn = document.getElementById("playAgainBtn");
 const findNewBtn = document.getElementById("findNewBtn");
 
+// Chat elements
+const chatMessages = document.getElementById("chatMessages");
+const chatInput = document.getElementById("chatInput");
+const sendChatBtn = document.getElementById("sendChatBtn");
+
+// Toast element
+const toastEl = document.getElementById("toast");
+
+// Stats elements
+const totalGamesEl = document.getElementById("totalGames");
+const winsEl = document.getElementById("wins");
+const lossesEl = document.getElementById("losses");
+const drawsEl = document.getElementById("draws");
+
 // ===== State =====
 let ws = null;
 let playerName = "";
 let mySymbol = null;
-let opponentName = "-";
+let opponentName = "Đang chờ...";
 let currentRoomId = null;
 
 let boardState = Array(9).fill(".");
@@ -64,20 +84,22 @@ let iWantPlayAgain = false;
 let opponentWantsPlayAgain = false;
 let gameEnded = false;
 
-// ===== TIMER STATE =====
+// Timer state
 let turnTimerInterval = null;
 let turnStartTime = 0;
-let currentTurn = null; // 'X' or 'O'
+let currentTurn = null;
 const TURN_DURATION = 60;
 
-// Timer DOM (created by JS)
-let timerEl = null;
-let timerFillEl = null;
+// Game stats
+let totalGames = 0;
+let wins = 0;
+let losses = 0;
+let draws = 0;
 
-// FIX fallback: nếu STATUS báo đối thủ rời/mất kết nối mà GAME_OVER bị rơi
+// FIX fallback
 let pendingOpponentAutoWin = null;
 
-// ===== Utility =====
+// ===== Utility Functions =====
 function addLog(msg) {
     log.textContent += msg + "\n";
     log.scrollTop = log.scrollHeight;
@@ -88,29 +110,34 @@ function toast(msg, type = "ok") {
     toastEl.className = `toast ${type}`;
     toastEl.classList.remove("hidden");
     clearTimeout(toastEl._t);
-    toastEl._t = setTimeout(() => toastEl.classList.add("hidden"), 2200);
+    toastEl._t = setTimeout(() => {
+        toastEl.classList.add("fade-out");
+        setTimeout(() => toastEl.classList.add("hidden"), 500);
+    }, 3000);
 }
 
-function setStatus(s) { gameStatus.textContent = s; }
-function setMatchInfo(s) { matchInfo.textContent = s; }
+function setStatus(s) {
+    gameStatus.textContent = s;
+}
+
+function setMatchInfo(s) {
+    matchInfo.textContent = s;
+}
 
 function setConnState(state) {
     connDot.classList.remove("on", "err");
     if (state === "on") connDot.classList.add("on");
     if (state === "err") connDot.classList.add("err");
-    connText.textContent = state === "on" ? "Connected" : (state === "err" ? "Error" : "Disconnected");
+    connText.textContent = state === "on" ? "Đã kết nối" : (state === "err" ? "Lỗi" : "Đang kết nối...");
 }
 
-// ===== URL Decode Name (fix hiển thị tiếng Việt + dấu cách) =====
 function decodeName(raw) {
     if (raw == null) return raw;
     const s = String(raw).trim();
     if (!s) return s;
 
-    // hỗ trợ cả %20 lẫn '+' (URLEncoder hay dùng '+')
     const normalized = s.replace(/\+/g, "%20");
     try {
-        // chỉ decode nếu có dấu % để tránh decode nhầm chuỗi thường
         if (normalized.includes("%")) return decodeURIComponent(normalized);
         return s;
     } catch {
@@ -124,16 +151,27 @@ function updateSymbolBadge() {
     if (mySymbol === "X") playerSymbolEl.classList.add("x");
     if (mySymbol === "O") playerSymbolEl.classList.add("o");
 
+    playerSymbolDisplay.textContent = mySymbol || "?";
+    playerSymbolDisplay.className = "player-card-symbol";
+    if (mySymbol === "X") playerSymbolDisplay.classList.add("x");
+    if (mySymbol === "O") playerSymbolDisplay.classList.add("o");
+
     const op = mySymbol ? (mySymbol === "X" ? "O" : "X") : "?";
     opponentSymbolEl.textContent = op;
     opponentSymbolEl.className = "player-badge";
     if (op === "X") opponentSymbolEl.classList.add("x");
     if (op === "O") opponentSymbolEl.classList.add("o");
+
+    opponentSymbolDisplay.textContent = op;
+    opponentSymbolDisplay.className = "player-card-symbol";
+    if (op === "X") opponentSymbolDisplay.classList.add("x");
+    if (op === "O") opponentSymbolDisplay.classList.add("o");
 }
 
 function setOpponent(name) {
-    opponentName = decodeName(name || "-") || "-";
+    opponentName = decodeName(name || "Đang chờ...") || "Đang chờ...";
     opponentNameEl.textContent = opponentName;
+    opponentNameDisplay.textContent = opponentName;
 }
 
 function setRoomId(roomId) {
@@ -142,7 +180,22 @@ function setRoomId(roomId) {
     copyRoomBtn.disabled = !currentRoomId;
 }
 
-// ===== Tabs (Option 1) =====
+function updateStats() {
+    totalGamesEl.textContent = totalGames;
+    winsEl.textContent = wins;
+    lossesEl.textContent = losses;
+    drawsEl.textContent = draws;
+}
+
+function updateStatsFromResult(result) {
+    totalGames++;
+    if (result === "win") wins++;
+    else if (result === "loss") losses++;
+    else if (result === "draw") draws++;
+    updateStats();
+}
+
+// ===== Tabs =====
 function selectTab(which) {
     if (!tabQuick || !tabJoin || !panelQuick || !panelJoin) return;
 
@@ -157,11 +210,10 @@ function selectTab(which) {
 if (tabQuick && tabJoin) {
     tabQuick.onclick = () => selectTab("quick");
     tabJoin.onclick = () => selectTab("join");
-    // mặc định tab quick
     selectTab("quick");
 }
 
-// ===== Board =====
+// ===== Board Functions =====
 function renderBoard() {
     const cells = board.querySelectorAll(".cell");
     for (let i = 0; i < 9; i++) {
@@ -194,52 +246,7 @@ function renderBoard() {
     }
 }
 
-// ===== Timer =====
-function createTimerElements() {
-    const boardArea = document.querySelector(".board-area");
-    if (!boardArea) return;
-
-    const existing = boardArea.querySelector(".timer-container");
-    if (existing) {
-        timerEl = existing.querySelector(".timer");
-        timerFillEl = existing.querySelector(".timer-fill");
-        return;
-    }
-
-    const timerContainer = document.createElement("div");
-    timerContainer.className = "timer-container";
-
-    const wrap = document.createElement("div");
-    wrap.className = "timer-wrap";
-
-    const top = document.createElement("div");
-    top.className = "timer-top";
-
-    const label = document.createElement("div");
-    label.className = "timer-label";
-    label.textContent = "Time left";
-
-    timerEl = document.createElement("div");
-    timerEl.className = "timer inactive";
-    timerEl.textContent = TURN_DURATION;
-
-    top.appendChild(label);
-    top.appendChild(timerEl);
-
-    const bar = document.createElement("div");
-    bar.className = "timer-bar";
-
-    timerFillEl = document.createElement("div");
-    timerFillEl.className = "timer-fill";
-    bar.appendChild(timerFillEl);
-
-    wrap.appendChild(top);
-    wrap.appendChild(bar);
-
-    timerContainer.appendChild(wrap);
-    boardArea.insertBefore(timerContainer, boardArea.firstChild);
-}
-
+// ===== Timer Functions =====
 function updateTimerDisplay() {
     if (!turnStartTime || !currentTurn || !timerEl) return;
 
@@ -247,12 +254,14 @@ function updateTimerDisplay() {
     const elapsed = Math.floor((now - turnStartTime) / 1000);
     const remaining = Math.max(0, TURN_DURATION - elapsed);
 
-    timerEl.textContent = remaining;
+    // Format as MM:SS
+    const minutes = Math.floor(remaining / 60);
+    const seconds = remaining % 60;
+    timerEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
     const myTurn = mySymbol && currentTurn === mySymbol;
     timerEl.classList.toggle("active", myTurn);
     timerEl.classList.toggle("inactive", !myTurn);
-
     timerEl.classList.toggle("urgent", remaining <= 10);
 
     if (timerFillEl) {
@@ -286,13 +295,13 @@ function resetTimers() {
     turnStartTime = 0;
 
     if (timerEl) {
-        timerEl.textContent = TURN_DURATION;
+        timerEl.textContent = "60";
         timerEl.className = "timer inactive";
     }
     if (timerFillEl) timerFillEl.style.width = "100%";
 }
 
-// ===== Overlay =====
+// ===== Overlay Functions =====
 function showOverlay(icon, text) {
     resultIcon.textContent = icon;
     resultText.textContent = text;
@@ -323,6 +332,7 @@ function hideOverlay() {
 function showMessage(text, type) {
     overlayMessage.textContent = text;
     overlayMessage.className = "overlay-message " + type;
+    overlayMessage.classList.remove("hidden");
 }
 
 function resetForNewGame() {
@@ -333,7 +343,35 @@ function resetForNewGame() {
     resetTimers();
 }
 
-// ===== Create Board once =====
+// ===== Chat Functions =====
+function addChatMessage(sender, message, isMe = false) {
+    const div = document.createElement("div");
+    div.className = "chat-msg " + (isMe ? "me" : "other");
+
+    const senderSpan = document.createElement("span");
+    senderSpan.className = "sender";
+    senderSpan.textContent = isMe ? "Bạn" : sender;
+    div.appendChild(senderSpan);
+
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "time";
+    timeSpan.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    div.appendChild(timeSpan);
+
+    const textNode = document.createTextNode(message);
+    div.appendChild(textNode);
+
+    chatMessages.appendChild(div);
+
+    const chatBody = chatMessages.parentElement;
+    if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+function clearChat() {
+    chatMessages.innerHTML = "";
+}
+
+// ===== Create Board =====
 board.innerHTML = "";
 for (let i = 0; i < 9; i++) {
     const cell = document.createElement("div");
@@ -350,7 +388,7 @@ for (let i = 0; i < 9; i++) {
 }
 renderBoard();
 
-// ===== Buttons =====
+// ===== Event Listeners =====
 playAgainBtn.onclick = () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
@@ -377,6 +415,7 @@ findNewBtn.onclick = () => {
     hideOverlay();
     setRoomId(null);
     leaveBtn.classList.add("hidden");
+    leaveBtnSmall.classList.add("hidden");
 
     setMatchInfo("");
     resetTimers();
@@ -422,7 +461,6 @@ copyRoomBtn.onclick = async () => {
     }
 };
 
-// FIX #2: QuickBtn luôn LEAVE trước nếu đang trong room (tránh kẹt phòng / already in room)
 quickBtn.onclick = () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
@@ -430,13 +468,13 @@ quickBtn.onclick = () => {
     resetTimers();
     selectTab("quick");
 
-    // nếu đang trong room -> rời trước rồi mới tìm trận (giống overlay findNewBtn)
     if (currentRoomId) {
         ws.send("RESTART_DECLINE");
         ws.send("LEAVE");
 
         setRoomId(null);
         leaveBtn.classList.add("hidden");
+        leaveBtnSmall.classList.add("hidden");
         setMatchInfo("");
 
         toast("Đang tìm trận...", "ok");
@@ -445,7 +483,6 @@ quickBtn.onclick = () => {
             ws.send("QUICKPLAY");
             setStatus("Đang tìm...");
         }, 300);
-
         return;
     }
 
@@ -477,12 +514,12 @@ joinRoomBtn.onclick = () => {
     toast("Đang vào phòng...", "ok");
 };
 
-leaveBtn.onclick = () => {
+leaveBtn.onclick = leaveBtnSmall.onclick = () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     hideOverlay();
     ws.send("LEAVE");
     resetTimers();
-    clearChat(); // ✅ XÓA CHAT
+    clearChat();
     toast("Đã rời phòng", "ok");
 };
 
@@ -498,11 +535,7 @@ chatInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") sendChatBtn.click();
 });
 
-function clearChat() {
-    chatMessages.innerHTML = "";
-}
-
-// ===== WebSocket =====
+// ===== WebSocket Connection =====
 function connectWebSocket() {
     const scheme = (location.protocol === "https:") ? "wss" : "ws";
     const url = `${scheme}://${location.host}/ws`;
@@ -517,25 +550,25 @@ function connectWebSocket() {
         gameScreen.classList.remove("hidden");
 
         playerNameEl.textContent = playerName;
+        playerNameDisplay.textContent = playerName;
 
-        setOpponent("-");
+        setOpponent("Đang chờ...");
         mySymbol = null;
         updateSymbolBadge();
 
         setRoomId(null);
         setMatchInfo("");
+        updateStats();
 
         setStatus("Sẵn sàng");
         addLog(" Kết nối thành công!");
-        toast("Connected ", "ok");
+        toast("Đã kết nối với server", "ok");
 
         quickBtn.disabled = false;
         createBtn.disabled = false;
         joinRoomBtn.disabled = false;
 
-        createTimerElements();
         renderBoard();
-
         selectTab("quick");
     };
 
@@ -543,14 +576,14 @@ function connectWebSocket() {
         setConnState("err");
         loginError.textContent = "Không thể kết nối server!";
         loginError.classList.remove("hidden");
-        toast("WebSocket error", "err");
+        toast("Lỗi kết nối WebSocket", "err");
     };
 
     ws.onclose = () => {
         setConnState("off");
         setStatus("Mất kết nối");
         addLog("🔌 Ngắt kết nối");
-        toast("Disconnected", "warn");
+        toast("Đã ngắt kết nối", "warn");
 
         resetTimers();
         renderBoard();
@@ -584,25 +617,7 @@ function connectWebSocket() {
             }
 
             const isMe = senderName === playerName;
-
-            const div = document.createElement("div");
-            div.className = "chat-msg " + (isMe ? "me" : "other");
-
-            if (senderName) {
-                const senderSpan = document.createElement("span");
-                senderSpan.className = "sender";
-                senderSpan.textContent = isMe ? "Bạn" : senderName;
-                div.appendChild(senderSpan);
-            }
-
-            const textNode = document.createTextNode(msgText);
-            div.appendChild(textNode);
-
-            chatMessages.appendChild(div);
-
-            // Scroll chat body instead of chat messages
-            const chatBody = chatMessages.parentElement;
-            if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
+            addChatMessage(senderName, msgText, isMe);
             return;
         }
 
@@ -612,10 +627,11 @@ function connectWebSocket() {
             if (m) setRoomId(m[1]);
 
             setStatus("Đang chờ...");
-            setMatchInfo(""); //
+            setMatchInfo("");
             leaveBtn.classList.remove("hidden");
+            leaveBtnSmall.classList.remove("hidden");
             resetTimers();
-            setOpponent("-");
+            setOpponent("Đang chờ...");
             toast("Đang chờ người chơi...", "ok");
             selectTab("quick");
             return;
@@ -623,7 +639,6 @@ function connectWebSocket() {
 
         // MATCHED / JOINED
         if (msg.startsWith("MATCHED") || msg.startsWith("JOINED")) {
-            // FIX: lấy phần sau vs= tới hết dòng (hỗ trợ tên có dấu cách) + decode URL
             const vsMatch = msg.match(/vs=(.*)$/);
             const roomMatch = msg.match(/roomId=([A-Z0-9_]+)/);
 
@@ -636,10 +651,11 @@ function connectWebSocket() {
             setStatus("Đang chơi");
             setMatchInfo(rawVs ? `vs ${vsName}` : "Đang chơi");
             leaveBtn.classList.remove("hidden");
+            leaveBtnSmall.classList.remove("hidden");
 
             resetForNewGame();
             clearChat();
-            toast("Đã ghép trận ", "ok");
+            toast("Đã ghép trận!", "ok");
             selectTab("quick");
             return;
         }
@@ -650,10 +666,11 @@ function connectWebSocket() {
             if (m) setRoomId(m[1]);
 
             setStatus("Chờ người chơi");
-            setMatchInfo(""); //
+            setMatchInfo("");
             leaveBtn.classList.remove("hidden");
+            leaveBtnSmall.classList.remove("hidden");
             resetTimers();
-            setOpponent("-");
+            setOpponent("Đang chờ...");
             toast("Tạo phòng thành công", "ok");
             selectTab("quick");
             return;
@@ -704,7 +721,6 @@ function connectWebSocket() {
         if (msg.startsWith("STATUS ")) {
             const statusMsg = msg.substring(7);
 
-            // FIX #1 fallback: nếu đối thủ rời/mất kết nối mà GAME_OVER bị rơi -> stop timer + auto-win
             const lower = statusMsg.toLowerCase();
             if (lower.includes("opponent disconnected") || lower.includes("opponent left the room")) {
                 stopTurnTimer();
@@ -713,11 +729,11 @@ function connectWebSocket() {
                 pendingOpponentAutoWin = setTimeout(() => {
                     if (!gameEnded) {
                         showOverlay("🔌", "Đối thủ rời/mất kết nối. Bạn thắng!");
+                        updateStatsFromResult("win");
                     }
                 }, 700);
             }
 
-            // Nếu server gửi dạng: "Room created! Share ID: ABC123"
             if (/share id/i.test(statusMsg)) {
                 const m = statusMsg.match(/Share ID:\s*([A-Z0-9_]+)/i);
                 if (m) setRoomId(m[1]);
@@ -728,7 +744,6 @@ function connectWebSocket() {
             if (/room[:=]\s*([A-Z0-9_]+)/i.test(statusMsg)) {
                 const m = statusMsg.match(/room[:=]\s*([A-Z0-9_]+)/i);
                 if (m) setRoomId(m[1]);
-                // giữ status ngắn gọn
                 setStatus("Đang chờ...");
                 return;
             }
@@ -751,7 +766,7 @@ function connectWebSocket() {
                 showMessage("🎮 Bắt đầu...", "waiting");
             } else {
                 showMessage("🔔 Đối thủ muốn chơi tiếp!", "opponent");
-                toast("Đối thủ muốn restart", "warn");
+                toast("Đối thủ muốn chơi lại", "warn");
             }
             return;
         }
@@ -763,23 +778,27 @@ function connectWebSocket() {
             const winnerMatch = msg.match(/winner=([^ ]+)/);
             const reasonMatch = msg.match(/reason=([^ ]+)/);
 
-            let icon, text;
+            let icon, text, result;
             const winner = winnerMatch ? winnerMatch[1] : "";
             const reason = reasonMatch ? reasonMatch[1] : "";
 
             if (winner === "DRAW") {
-                icon = "🤝"; text = "Hòa!";
+                icon = "🤝"; text = "Hòa!"; result = "draw";
             } else if (reason === "DISCONNECT") {
-                if (winner === mySymbol) { icon = "🔌"; text = "Đối thủ mất kết nối. Bạn thắng!"; }
-                else { icon = "🔌"; text = "Mất kết nối."; }
+                if (winner === mySymbol) { icon = "🔌"; text = "Đối thủ mất kết nối. Bạn thắng!"; result = "win"; }
+                else { icon = "🔌"; text = "Mất kết nối."; result = "loss"; }
             } else if (winner === mySymbol) {
-                icon = "🏆"; text = "Bạn thắng!";
+                icon = "🏆"; text = "Bạn thắng!"; result = "win";
             } else if (reason === "TIMEOUT") {
                 icon = "⏰";
-                text = winner === "X" ? "X hết giờ, O thắng!" : "O hết giờ, X thắng!";
+                if (winner === "X") text = "X hết giờ, O thắng!";
+                else text = "O hết giờ, X thắng!";
+                result = winner === mySymbol ? "win" : "loss";
             } else {
-                icon = "😔"; text = "Bạn thua!";
+                icon = "😔"; text = "Bạn thua!"; result = "loss";
             }
+
+            if (result) updateStatsFromResult(result);
 
             setTimeout(() => showOverlay(icon, text), 350);
             stopTurnTimer();
@@ -789,7 +808,7 @@ function connectWebSocket() {
         // RESTART_DECLINED
         if (msg.startsWith("RESTART_DECLINED")) {
             showMessage("👋 Đối thủ tìm người khác", "opponent");
-            toast("Đối thủ từ chối restart", "warn");
+            toast("Đối thủ từ chối chơi lại", "warn");
             return;
         }
 
@@ -805,12 +824,13 @@ function connectWebSocket() {
             mySymbol = null;
             updateSymbolBadge();
 
-            setOpponent("-");
+            setOpponent("Đang chờ...");
             boardState = Array(9).fill(".");
             lastMoveIndex = -1;
             renderBoard();
 
             leaveBtn.classList.add("hidden");
+            leaveBtnSmall.classList.add("hidden");
             resetTimers();
             clearChat();
             toast("Đối thủ đã rời", "warn");
@@ -822,11 +842,10 @@ function connectWebSocket() {
             clearTimeout(pendingOpponentAutoWin);
 
             setRoomId(null);
-
             mySymbol = null;
             updateSymbolBadge();
 
-            setOpponent("-");
+            setOpponent("Đang chờ...");
             boardState = Array(9).fill(".");
             lastMoveIndex = -1;
             renderBoard();
@@ -834,6 +853,7 @@ function connectWebSocket() {
             setStatus("Sẵn sàng");
             setMatchInfo("");
             leaveBtn.classList.add("hidden");
+            leaveBtnSmall.classList.add("hidden");
             resetTimers();
             clearChat();
             toast("Bạn đã rời phòng", "ok");
